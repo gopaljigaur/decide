@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -238,9 +239,16 @@ class Client:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None, policy: Gate | None = None) -> Client:
-        backend_names, kwargs_by_name = _resolve_env_backends(env)
+        """Build a `Client` from an environment mapping.
+
+        `env` defaults to `os.environ` (the real process environment) when
+        omitted or `None`; pass an explicit mapping (including `{}`) to
+        configure from something else, e.g. in tests.
+        """
+        resolved_env = env if env is not None else os.environ
+        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
-        resolved_policy = policy if policy is not None else _policy_from_env(env)
+        resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
         return cls(backends, policy=resolved_policy)
 
     def close(self) -> None:
@@ -347,9 +355,16 @@ class AsyncClient:
     def from_env(
         cls, env: Mapping[str, str] | None = None, policy: Gate | None = None
     ) -> AsyncClient:
-        backend_names, kwargs_by_name = _resolve_env_backends(env)
+        """Build an `AsyncClient` from an environment mapping.
+
+        `env` defaults to `os.environ` (the real process environment) when
+        omitted or `None`; pass an explicit mapping (including `{}`) to
+        configure from something else, e.g. in tests.
+        """
+        resolved_env = env if env is not None else os.environ
+        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
-        resolved_policy = policy if policy is not None else _policy_from_env(env)
+        resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
         return cls(backends, policy=resolved_policy)
 
     async def aclose(self) -> None:

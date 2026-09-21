@@ -201,7 +201,8 @@ def _cmd_ask(args: argparse.Namespace, ask_parser: argparse.ArgumentParser) -> i
     questions = _build_questions(args, ask_parser)
 
     policy = Gate(min_confidence=args.min_confidence) if args.min_confidence is not None else None
-    client = make_client(dict(os.environ), policy)
+    # `Client.from_env` reads `os.environ` itself when `env` is omitted/None.
+    client = make_client(None, policy)
     try:
         response = client.decide(args.text, questions, model=args.model)
     finally:

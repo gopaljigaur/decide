@@ -396,3 +396,49 @@ def test_from_env_laya_mlx_preferred_when_both_available(monkeypatch):
     c = Client.from_env(env={"DECIDE_LOCAL_MODEL": "m1"})
     assert captured == {"laya_mlx": {"model": "m1"}}
     assert [b.name for b in c.backends] == ["laya_mlx"]
+
+
+_FROM_ENV_VARS = (
+    "DECIDE_BACKENDS",
+    "DECIDE_LOCAL_MODEL",
+    "TYPESAFE_API_KEY",
+    "TYPESAFE_BASE_URL",
+    "OPENROUTER_API_KEY",
+    "DECIDE_LLM_BASE_URL",
+    "OPENAI_API_KEY",
+    "DECIDE_LLM_MODEL",
+    "DECIDE_MIN_CONFIDENCE",
+)
+
+
+def test_from_env_with_no_argument_reads_process_environment(monkeypatch):
+    """`Client.from_env()` with no `env` argument reads `os.environ`, not an empty mapping."""
+    import decide.client as mod
+
+    for name in _FROM_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(mod, "load_backend", lambda name, **kw: FakeBackend(name))
+
+    with pytest.raises(ConfigError, match="TYPESAFE_API_KEY"):
+        Client.from_env()
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+    c = Client.from_env()
+    assert [b.name for b in c.backends] == ["typesafe"]
+
+
+async def test_async_client_from_env_with_no_argument_reads_process_environment(monkeypatch):
+    """`AsyncClient.from_env()` with no `env` argument reads `os.environ` too."""
+    import decide.client as mod
+
+    for name in _FROM_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(mod, "load_backend", lambda name, **kw: FakeBackend(name))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    c = AsyncClient.from_env()
+    assert [b.name for b in c.backends] == ["openrouter"]
+
+    # An explicit env=None also falls back to os.environ, same as omitting the argument.
+    c2 = AsyncClient.from_env(env=None)
+    assert [b.name for b in c2.backends] == ["openrouter"]

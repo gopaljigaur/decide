@@ -35,14 +35,14 @@ unavailable.
 ## Quickstart: the fallback chain
 
 `Client.from_env()` builds a backend chain from whatever is installed and
-configured in the environment mapping you pass it. It does not read
-`os.environ` implicitly, so pass it explicitly (as the CLI does):
+configured in the process environment. Pass an explicit `env=` mapping
+instead (e.g. in tests) to configure from something other than
+`os.environ`:
 
 ```python
-import os
 from decide import Client, Choice, Score, Noul
 
-client = Client.from_env(env=os.environ)
+client = Client.from_env()
 
 r = client.decide(
     state={"ticket": "I was charged twice, please refund."},
@@ -66,7 +66,7 @@ r.scores["severity"].score  # 1.5522  (expected level index, 0..len(levels)-1)
 r.scores["severity"].probabilities  # [0.0197, 0.4083, 0.5719]
 r.nouls["refund"].noul  # 0.9461
 r.meta.backend  # "laya_mlx"
-r.meta.latency_ms  # 38.1
+r.meta.latency_ms  # 47.9
 r.meta.route  # ["laya_mlx:ok"]
 ```
 
