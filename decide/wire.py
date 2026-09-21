@@ -77,12 +77,26 @@ def _numeric_mapping(value: Any, name: str, field: str) -> dict[str, float]:
     return {k: _numeric(v, name, f"{field}.{k}") for k, v in value.items()}
 
 
-def _numeric_sequence(value: Any, name: str, field: str) -> list[float]:
-    if not isinstance(value, list):
+def _indexed_numeric_mapping(value: Any, name: str, field: str, n: int) -> list[float]:
+    """Parse a `{"0": ..., "1": ..., ...}`-style mapping into an ordered `list[float]`.
+
+    TypeSafe's `SystemOneResponse.ScoreAnswer.probabilities` (and `.legend`) key
+    each score level by its stringified index rather than using a JSON array.
+    """
+    if not isinstance(value, Mapping):
         raise BadResponseError(
-            backend="wire", message=f"question '{name}' field '{field}' must be a list"
+            backend="wire", message=f"question '{name}' field '{field}' must be a mapping"
         )
-    return [_numeric(v, name, f"{field}[{i}]") for i, v in enumerate(value)]
+    expected = {str(i) for i in range(n)}
+    if set(value) != expected:
+        raise BadResponseError(
+            backend="wire",
+            message=(
+                f"question '{name}' field '{field}' must have keys {sorted(expected)}, "
+                f"got {sorted(value)}"
+            ),
+        )
+    return [_numeric(value[str(i)], name, f"{field}.{i}") for i in range(n)]
 
 
 def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer]:
@@ -127,7 +141,9 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' expected type 'score', got {atype!r}",
                 )
-            probs = _numeric_sequence(_get_field(a, "probabilities", name), name, "probabilities")
+            probs = _indexed_numeric_mapping(
+                _get_field(a, "probabilities", name), name, "probabilities", len(question.criteria)
+            )
             score = a.get("score")
             if score is None:
                 score = sum(i * p for i, p in enumerate(probs))
@@ -151,20 +167,29 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
 
 
 def to_wire_answers(resp: Response) -> dict[str, Any]:
-    """Render a Response's answers back into TypeSafe's wire JSON shape."""
+    """Render a Response's answers back into TypeSafe's wire JSON shape.
+
+    `confidence` (Choice, Score) and `legend` (Score) are required by TypeSafe's
+    `SystemOneResponse.Answer` schema but aren't stored on `ChoiceAnswer`/
+    `ScoreAnswer`; they're derived here the same way `Gate.confidence` derives
+    confidence from probabilities (max probability = confidence in the top pick).
+    """
     wire: dict[str, Any] = {}
     for name, answer in resp.answers.items():
         if isinstance(answer, ChoiceAnswer):
             wire[name] = {
                 "type": "choice",
                 "choice": answer.choice,
+                "confidence": max(answer.probabilities.values()),
                 "probabilities": dict(answer.probabilities),
             }
         elif isinstance(answer, ScoreAnswer):
             wire[name] = {
                 "type": "score",
                 "score": answer.score,
-                "probabilities": list(answer.probabilities),
+                "confidence": max(answer.probabilities),
+                "legend": {str(i): level for i, level in enumerate(answer.levels)},
+                "probabilities": {str(i): p for i, p in enumerate(answer.probabilities)},
             }
         elif isinstance(answer, NoulAnswer):
             wire[name] = {"type": "noul", "noul": answer.noul}

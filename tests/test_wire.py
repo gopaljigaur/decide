@@ -49,7 +49,7 @@ def test_from_wire_answers_parses_all_types_and_fills_gaps():
     a = from_wire_answers(
         {
             "team": {"type": "choice", "probabilities": {"billing": 0.8, "eng": 0.2}},
-            "sev": {"type": "score", "probabilities": [0.25, 0.75]},
+            "sev": {"type": "score", "probabilities": {"0": 0.25, "1": 0.75}},
             "refund": {"type": "noul", "noul": 0.9},
         },
         REQ,
@@ -66,7 +66,7 @@ def test_from_wire_answers_rejects_missing_and_unknown():
         from_wire_answers(
             {
                 "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul", "noul": 0.1},
                 "ghost": {"type": "noul", "noul": 0.1},
             },
@@ -83,7 +83,7 @@ def test_round_trip_answers():
                     "choice": "eng",
                     "probabilities": {"billing": 0.4, "eng": 0.6},
                 },
-                "sev": {"type": "score", "score": 1.0, "probabilities": [0.0, 1.0]},
+                "sev": {"type": "score", "score": 1.0, "probabilities": {"0": 0.0, "1": 1.0}},
                 "refund": {"type": "noul", "noul": 0.2},
             },
             REQ,
@@ -94,9 +94,16 @@ def test_round_trip_answers():
     assert w["team"] == {
         "type": "choice",
         "choice": "eng",
+        "confidence": 0.6,
         "probabilities": {"billing": 0.4, "eng": 0.6},
     }
-    assert w["sev"] == {"type": "score", "score": 1.0, "probabilities": [0.0, 1.0]}
+    assert w["sev"] == {
+        "type": "score",
+        "score": 1.0,
+        "confidence": 1.0,
+        "legend": {"0": "minor", "1": "blocked"},
+        "probabilities": {"0": 0.0, "1": 1.0},
+    }
     assert w["refund"] == {"type": "noul", "noul": 0.2}
 
 
@@ -118,7 +125,7 @@ def test_from_wire_answers_rejects_type_mismatch():
         from_wire_answers(
             {
                 "team": {"type": "score", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
@@ -136,7 +143,7 @@ def test_from_wire_answers_rejects_type_mismatch():
         from_wire_answers(
             {
                 "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "choice", "noul": 0.1},
             },
             REQ,
@@ -152,7 +159,7 @@ def test_from_wire_answers_rejects_choice_not_among_candidates():
                     "choice": "sales",
                     "probabilities": {"billing": 0.5, "eng": 0.5},
                 },
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
@@ -164,7 +171,7 @@ def test_from_wire_answers_rejects_missing_probabilities_field():
         from_wire_answers(
             {
                 "team": {"type": "choice", "choice": "billing"},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
@@ -185,7 +192,7 @@ def test_from_wire_answers_rejects_missing_noul_field():
         from_wire_answers(
             {
                 "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul"},
             },
             REQ,
@@ -197,7 +204,7 @@ def test_from_wire_answers_rejects_non_numeric_probabilities_and_noul():
         from_wire_answers(
             {
                 "team": {"type": "choice", "probabilities": {"billing": "high", "eng": 0.2}},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
@@ -206,7 +213,7 @@ def test_from_wire_answers_rejects_non_numeric_probabilities_and_noul():
         from_wire_answers(
             {
                 "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": ["low", "high"]},
+                "sev": {"type": "score", "probabilities": {"0": "low", "1": "high"}},
                 "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
@@ -215,8 +222,40 @@ def test_from_wire_answers_rejects_non_numeric_probabilities_and_noul():
         from_wire_answers(
             {
                 "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": [1, 0]},
+                "sev": {"type": "score", "probabilities": {"0": 1, "1": 0}},
                 "refund": {"type": "noul", "noul": "yes"},
+            },
+            REQ,
+        )
+
+
+def test_from_wire_answers_rejects_score_probabilities_not_index_keyed_mapping():
+    # TypeSafe's SystemOneResponse represents Score probabilities as an object keyed
+    # by stringified level index ("0", "1", ...), matching `legend`, not a JSON array.
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": {"lo": 1, "hi": 0}},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": {"0": 1}},
+                "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
         )
