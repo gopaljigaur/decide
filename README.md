@@ -28,9 +28,9 @@ pip install "pydecide[st]"       # crossencoder backend (sentence-transformers)
 pip install "pydecide[all]"      # everything above
 ```
 
-The `mlx` extra depends on `laya-mlx`, which only publishes wheels for
-Python 3.11 and above; on 3.10 the extra installs nothing and the
-`laya_mlx` backend is unavailable.
+The `mlx` extra depends on `laya-mlx`, which requires Python 3.11 or newer;
+on 3.10 the extra installs nothing and the `laya_mlx` backend is
+unavailable.
 
 ## Quickstart: the fallback chain
 
