@@ -76,6 +76,40 @@ def test_batch_is_one_call():
     assert len(rs) == 3 and len(m.calls) == 1 and len(m.calls[0]) == 15
 
 
+@pytest.mark.parametrize("bad_temperature", [0, -1.0, float("nan")])
+def test_temperature_must_be_positive_finite(bad_temperature):
+    m = StubModel({"billing": 1.0, "eng": 0.0, "minor": 0, "blocked": 0, "Refund?": 0})
+    with pytest.raises(ValueError, match="temperature"):
+        CrossEncoderBackend(m, temperature=bad_temperature)
+
+
+class MultiLabelStubModel:
+    """Returns two scores per pair, like a model with num_labels > 1 and no scalar activation."""
+
+    def __init__(self):
+        self.calls = []
+
+    def predict(self, pairs, activation_fn=None, batch_size=32, **kw):
+        self.calls.append(list(pairs))
+        return [[1.0, 2.0] for _pair in pairs]
+
+
+def test_num_labels_greater_than_one_gives_config_error():
+    from decide.errors import ConfigError
+
+    m = MultiLabelStubModel()
+    with pytest.raises(ConfigError, match="num_labels"):
+        CrossEncoderBackend(m).decide(REQ)
+
+
+def test_noul_with_only_true_side_uses_default_for_false():
+    req = Request("s", {"n": Noul("q", {"true": "yes it is"})})
+    m = StubModel({"yes it is": 2.0, "The answer to the question is no.": 0.0})
+    r = CrossEncoderBackend(m).decide(req)
+    assert len(m.calls[0]) == 2
+    assert abs(r.nouls["n"].noul - 1 / (1 + math.exp(-2))) < 1e-9
+
+
 def test_string_model_without_extra_gives_config_error(monkeypatch):
     import builtins
 

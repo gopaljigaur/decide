@@ -253,9 +253,13 @@ class CrossEncoderBackend(BaseBackend):
             `KaLMJevTemplate` for KaLM-style instruction rerankers, or subclass `Template`.
         temperature: Divides the raw logits before the softmax/sigmoid. Below 1 sharpens the
             distributions, above 1 flattens them. Rerankers differ widely in logit scale, so tune
-            this on held-out data.
+            this on held-out data. Must be a positive, finite number.
         device: Forwarded to `CrossEncoder(...)` when `model` is a string.
         batch_size: Forwarded to `CrossEncoder.predict(...)`.
+
+    Raises:
+        ValueError: `temperature` is not a positive, finite number.
+        ConfigError: `model` is a string and `sentence_transformers` cannot be imported.
     """
 
     name = "crossencoder"
@@ -269,6 +273,8 @@ class CrossEncoderBackend(BaseBackend):
         device: str | None = None,
         batch_size: int = 32,
     ) -> None:
+        if not (math.isfinite(temperature) and temperature > 0):
+            raise ValueError(f"temperature must be a positive finite number, got {temperature!r}")
         if isinstance(model, str):
             try:
                 from sentence_transformers import CrossEncoder
@@ -284,7 +290,6 @@ class CrossEncoderBackend(BaseBackend):
             self._model = model
         self.template = template if template is not None else GenericTemplate()
         self.temperature = temperature
-        self.device = device
         self.batch_size = batch_size
 
     def capabilities(self) -> Capabilities:
