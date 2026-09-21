@@ -70,10 +70,28 @@ def test_templates_include_state_instructions_candidate():
         assert "STATE" in joined and "INSTR" in joined and "cand" in joined and "desc" in joined
 
 
-def test_batch_is_one_call():
-    m = StubModel({"billing": 1.0, "eng": 0.0, "minor": 0, "blocked": 0, "Refund?": 0})
-    rs = CrossEncoderBackend(m).decide_batch([REQ, REQ, REQ])
-    assert len(rs) == 3 and len(m.calls) == 1 and len(m.calls[0]) == 15
+def test_batch_is_one_call_and_results_correspond_to_their_input():
+    # Each request has its own candidates and its own winner, so a wrong slice
+    # offset in the aggregation would attach the wrong request's answer.
+    req_a = Request("a", {"q": Choice("Which team?", {"cat_a1": None, "cat_a2": None})})
+    req_b = Request("b", {"q": Choice("Which team?", {"cat_b1": None, "cat_b2": None})})
+    req_c = Request("c", {"q": Choice("Which team?", {"cat_c1": None, "cat_c2": None})})
+
+    table = {
+        "cat_a1": 5.0,
+        "cat_a2": 0.0,
+        "cat_b1": 0.0,
+        "cat_b2": 5.0,
+        "cat_c1": 5.0,
+        "cat_c2": 0.0,
+    }
+    m = StubModel(table)
+    rs = CrossEncoderBackend(m).decide_batch([req_a, req_b, req_c])
+
+    assert len(rs) == 3 and len(m.calls) == 1 and len(m.calls[0]) == 6
+    assert rs[0].choices["q"].choice == "cat_a1"
+    assert rs[1].choices["q"].choice == "cat_b2"
+    assert rs[2].choices["q"].choice == "cat_c1"
 
 
 @pytest.mark.parametrize("bad_temperature", [0, -1.0, float("nan")])
@@ -108,6 +126,18 @@ def test_noul_with_only_true_side_uses_default_for_false():
     r = CrossEncoderBackend(m).decide(req)
     assert len(m.calls[0]) == 2
     assert abs(r.nouls["n"].noul - 1 / (1 + math.exp(-2))) < 1e-9
+
+
+class _ExplodingModel:
+    def predict(self, pairs, activation_fn=None, batch_size=32, **kw):
+        raise RuntimeError("boom")
+
+
+def test_model_predict_exception_wrapped_as_backend_error():
+    from decide.errors import BackendError
+
+    with pytest.raises(BackendError, match="boom"):
+        CrossEncoderBackend(_ExplodingModel()).decide(REQ)
 
 
 def test_string_model_without_extra_gives_config_error(monkeypatch):

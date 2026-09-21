@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from decide.backends.base import BaseBackend, Capabilities
-from decide.errors import ConfigError
+from decide.errors import BackendError, ConfigError
 from decide.types import (
     Answer,
     Choice,
@@ -333,11 +333,16 @@ class CrossEncoderBackend(BaseBackend):
     def _predict(self, pairs: list[tuple[str, str]]) -> list[float]:
         if not pairs:
             return []
-        scores = self._model.predict(
-            [list(pair) for pair in pairs],
-            activation_fn=_identity_activation(),
-            batch_size=self.batch_size,
-        )
+        try:
+            scores = self._model.predict(
+                [list(pair) for pair in pairs],
+                activation_fn=_identity_activation(),
+                batch_size=self.batch_size,
+            )
+        except (BackendError, ConfigError):
+            raise
+        except Exception as exc:
+            raise BackendError(self.name, str(exc), exc) from exc
         return _to_floats(scores)
 
     def _aggregate(
