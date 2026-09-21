@@ -229,7 +229,7 @@ def _to_wire_answers(data: dict[str, Any], request: Request, backend_name: str) 
             }
         elif isinstance(question, Noul):
             noul = raw.get("noul")
-            if isinstance(noul, bool) or not isinstance(noul, int | float):
+            if not _is_numeric(noul):
                 raise BadResponseError(
                     backend_name,
                     f"model response for question {name!r} is missing a numeric 'noul'",

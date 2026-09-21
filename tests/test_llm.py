@@ -275,6 +275,22 @@ def test_well_formed_noul_answer_passes():
     assert r.nouls["refund"].noul == 0.95
 
 
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+def test_non_finite_noul_raises_bad_response(literal):
+    # json.loads accepts these bare literals (a non-standard Python extension),
+    # so a model can return them; they must not silently clamp to 0.0/1.0.
+    content = (
+        '{"team": {"probabilities": {"billing": 1.0, "eng": 0.0}}, '
+        '"sev": {"probabilities": [1, 0]}, '
+        '"refund": {"noul": ' + literal + "}}"
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
 @pytest.mark.parametrize("raw", _MALFORMED_ANSWER_SHAPES)
 def test_malformed_choice_answer_raises_bad_response(raw):
     content = json.dumps(
