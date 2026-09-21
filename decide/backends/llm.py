@@ -114,15 +114,20 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
-def _unwrap_envelope(data: dict[str, Any]) -> dict[str, Any]:
-    """Unwrap a `{"answers": {...}}` top-level envelope.
+def _select_answers_object(data: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Pick the object to read question answers from.
 
-    Some models echo TypeSafe's wire shape (`{"answers": {<question>: ...}}`)
-    instead of answering with the flat `{<question>: ...}` object the system
-    prompt asks for. When the parsed JSON has exactly one top-level key,
-    `"answers"`, whose value is itself an object, unwrap it once so that
-    shape is accepted too.
+    Prefers the flat top-level object, matching the system prompt's
+    contract: if every question name is already present at the top level,
+    use it as-is. Only falls back to unwrapping a `{"answers": {...}}`
+    envelope -- which some models echo, from TypeSafe's wire shape, instead
+    of answering flat -- when the flat reading is missing a question the
+    envelope might supply. This avoids misreading a genuine question
+    literally named "answers" (e.g. `{"answers": {"noul": 0.9}}` answering a
+    single Noul question named "answers") as an envelope to unwrap.
     """
+    if all(name in data for name in request.questions):
+        return data
     if set(data.keys()) == {"answers"} and isinstance(data["answers"], dict):
         return data["answers"]
     return data
@@ -249,7 +254,7 @@ class LLMBackend(HttpClientMixin, BaseBackend):
             raise BadResponseError(self.name, "model content was not valid JSON", exc) from exc
         if not isinstance(model_json, dict):
             raise BadResponseError(self.name, "model content must be a JSON object")
-        model_json = _unwrap_envelope(model_json)
+        model_json = _select_answers_object(model_json, request)
         wire = _to_wire_answers(model_json, request, self.name)
         answers = from_wire_answers(wire, request)
         response_model = data.get("model")

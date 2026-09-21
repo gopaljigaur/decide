@@ -208,6 +208,19 @@ def test_answers_envelope_is_unwrapped():
     assert r.nouls["refund"].noul == 0.1
 
 
+def test_question_literally_named_answers_is_read_flat_not_unwrapped():
+    # a request whose only question happens to be named "answers" must not
+    # be misread as an envelope to unwrap: {"answers": {"noul": 0.9}} is a
+    # flat, complete reply to that single question.
+    req = Request({"ticket": "x"}, {"answers": Noul("Escalate?")})
+    content = json.dumps({"answers": {"noul": 0.9}})
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(req)
+    assert r.nouls["answers"].noul == 0.9
+
+
 def test_all_zero_probabilities_for_an_answered_question_falls_back_to_uniform():
     content = json.dumps(
         {
