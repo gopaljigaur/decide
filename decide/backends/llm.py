@@ -145,22 +145,39 @@ def _to_wire_answers(data: dict[str, Any], request: Request, backend_name: str) 
         if name not in data:
             raise BadResponseError(backend_name, f"model response is missing question {name!r}")
         raw = data[name]
-        raw = raw if isinstance(raw, dict) else {}
+        if not isinstance(raw, dict):
+            raise BadResponseError(
+                backend_name, f"model response for question {name!r} must be an object, got {raw!r}"
+            )
         if isinstance(question, Choice):
+            if "probabilities" not in raw:
+                raise BadResponseError(
+                    backend_name, f"model response for question {name!r} is missing 'probabilities'"
+                )
             candidates = list(question.criteria)
             wire[name] = {
                 "type": "choice",
-                "probabilities": _normalised_choice_probs(raw.get("probabilities"), candidates),
+                "probabilities": _normalised_choice_probs(raw["probabilities"], candidates),
             }
         elif isinstance(question, Score):
+            if "probabilities" not in raw:
+                raise BadResponseError(
+                    backend_name, f"model response for question {name!r} is missing 'probabilities'"
+                )
             wire[name] = {
                 "type": "score",
                 "probabilities": _normalised_score_probs(
-                    raw.get("probabilities"), len(question.criteria)
+                    raw["probabilities"], len(question.criteria)
                 ),
             }
         elif isinstance(question, Noul):
-            wire[name] = {"type": "noul", "noul": _clamp01(raw.get("noul", 0.0))}
+            noul = raw.get("noul")
+            if isinstance(noul, bool) or not isinstance(noul, int | float):
+                raise BadResponseError(
+                    backend_name,
+                    f"model response for question {name!r} is missing a numeric 'noul'",
+                )
+            wire[name] = {"type": "noul", "noul": _clamp01(noul)}
         else:
             raise TypeError(f"unknown question type: {type(question)!r}")
     return wire

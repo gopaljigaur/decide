@@ -236,6 +236,77 @@ def test_all_zero_probabilities_for_an_answered_question_falls_back_to_uniform()
     assert r.choices["team"].probabilities == {"billing": 0.5, "eng": 0.5}
 
 
+_MALFORMED_ANSWER_SHAPES = [
+    {"value": "yes"},  # dict, but missing the expected field
+    {},  # dict, but missing the expected field
+    "yes",  # not a dict
+    0.95,  # not a dict (bare scalar)
+]
+
+
+@pytest.mark.parametrize("raw", _MALFORMED_ANSWER_SHAPES)
+def test_malformed_noul_answer_raises_bad_response(raw):
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": {"probabilities": [1, 0]},
+            "refund": raw,
+        }
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
+def test_well_formed_noul_answer_passes():
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": {"probabilities": [1, 0]},
+            "refund": {"noul": 0.95},
+        }
+    )
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(REQ)
+    assert r.nouls["refund"].noul == 0.95
+
+
+@pytest.mark.parametrize("raw", _MALFORMED_ANSWER_SHAPES)
+def test_malformed_choice_answer_raises_bad_response(raw):
+    content = json.dumps(
+        {
+            "team": raw,
+            "sev": {"probabilities": [1, 0]},
+            "refund": {"noul": 0.1},
+        }
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
+@pytest.mark.parametrize("raw", _MALFORMED_ANSWER_SHAPES)
+def test_malformed_score_answer_raises_bad_response(raw):
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": raw,
+            "refund": {"noul": 0.1},
+        }
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
 @pytest.mark.parametrize(
     "body",
     [
