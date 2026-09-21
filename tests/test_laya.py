@@ -111,6 +111,66 @@ def test_laya_decide_batch_uses_predict_batch_in_one_call():
         _assert_parsed(r, "laya")
 
 
+def test_laya_decide_batch_predict_batch_results_correspond_to_their_input():
+    # Each state gets its own distinct answer set, so a wrong slice offset in
+    # the response-to-request pairing would attach the wrong state's answer.
+    from decide.backends.laya import LayaBackend
+
+    req_a = Request("state-a", REQ.questions)
+    req_b = Request("state-b", REQ.questions)
+    req_c = Request("state-c", REQ.questions)
+
+    per_state_wire = {
+        "state-a": {
+            "team": {
+                "type": "choice",
+                "choice": "billing",
+                "probabilities": {"billing": 0.9, "eng": 0.1},
+            },
+            "sev": {"type": "score", "score": 0.0, "probabilities": {"0": 0.9, "1": 0.1}},
+            "refund": {"type": "noul", "noul": 0.1},
+        },
+        "state-b": {
+            "team": {
+                "type": "choice",
+                "choice": "eng",
+                "probabilities": {"billing": 0.2, "eng": 0.8},
+            },
+            "sev": {"type": "score", "score": 1.0, "probabilities": {"0": 0.1, "1": 0.9}},
+            "refund": {"type": "noul", "noul": 0.6},
+        },
+        "state-c": {
+            "team": {
+                "type": "choice",
+                "choice": "billing",
+                "probabilities": {"billing": 0.99, "eng": 0.01},
+            },
+            "sev": {"type": "score", "score": 1.0, "probabilities": {"0": 0.05, "1": 0.95}},
+            "refund": {"type": "noul", "noul": 0.99},
+        },
+    }
+
+    class _PerStateAgent:
+        def __init__(self):
+            self.batch_calls = []
+
+        def predict_batch(self, states, questions):
+            self.batch_calls.append((states, questions))
+            return [{"answers": per_state_wire[s]} for s in states]
+
+    agent = _PerStateAgent()
+    backend = LayaBackend(agent=agent)
+    responses = backend.decide_batch([req_a, req_b, req_c])
+
+    assert len(agent.batch_calls) == 1 and len(responses) == 3
+    assert responses[0].choices["team"].choice == "billing"
+    assert responses[0].nouls["refund"].noul == 0.1
+    assert responses[1].choices["team"].choice == "eng"
+    assert responses[1].nouls["refund"].noul == 0.6
+    assert responses[2].choices["team"].choice == "billing"
+    assert responses[2].nouls["refund"].noul == 0.99
+
+
 def test_laya_decide_batch_falls_back_to_decide_loop_without_predict_batch():
     from decide.backends.laya import LayaBackend
 
