@@ -200,6 +200,10 @@ takes a TypeSafe `SystemOneRequest` body and returns a
 backend/route metadata. Errors come back as
 `{"error": {"message": ..., "type": ...}}` with a matching HTTP status.
 
+If `--api-key`/`DECIDE_API_KEY` is set, requests must send a matching
+`Authorization: Bearer <token>` header; the key must be ASCII, since HTTP
+header bytes are latin-1 decoded by the server before comparison.
+
 A raw request against the running server above:
 
 ```bash
