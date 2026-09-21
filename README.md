@@ -172,13 +172,16 @@ Route strings you will see in `meta.route`:
   route, when no backend passed the gate and the best low-confidence
   response was returned instead.
 
-`decide_batch`/`AsyncClient.decide_batch` run the same chain per input
-state (using a backend's real batch path when `capabilities().batch` is
-true), preserving input order; a state that clears the gate on an earlier
-backend is not sent to later ones. If any state in the batch is left
-unrouted, `AllBackendsFailed` carries `partial` (every `Response` that did
-resolve, keyed by input index) and `failed` (the route so far for every
-state that did not), so the resolved siblings are not silently lost.
+`Client.decide_batch`/`AsyncClient.decide_batch` run the same chain per
+input state, preserving input order; a state that clears the gate on an
+earlier backend is not sent to later ones. `Client.decide_batch` uses a
+backend's real batch path when `capabilities().batch` is true, looping
+`decide` per request otherwise. `AsyncClient.decide_batch` always loops
+`adecide` per state, concurrently via `asyncio.gather`; it does not use a
+backend's batch path in v1. If any state in the batch is left unrouted,
+`AllBackendsFailed` carries `partial` (every `Response` that did resolve,
+keyed by input index) and `failed` (the route so far for every state that
+did not), so the resolved siblings are not silently lost.
 
 ## Server: point TypeSafe's SDK at a local model
 
