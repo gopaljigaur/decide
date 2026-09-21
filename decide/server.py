@@ -14,6 +14,7 @@ inside `create_app` so the core library has no hard dependency on it.
 # type, so FastAPI would try to bind it as a query parameter instead of the
 # request object. Keeping annotations eagerly evaluated avoids that.
 
+import hmac
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -61,7 +62,11 @@ def create_app(client: Client, *, api_key: str | None = None) -> "FastAPI":
         if api_key is None:
             return True
         scheme, _, token = request.headers.get("authorization", "").partition(" ")
-        return scheme.lower() == "bearer" and token == api_key
+        if scheme.lower() != "bearer":
+            return False
+        if not isinstance(token, str) or not isinstance(api_key, str):
+            return False
+        return hmac.compare_digest(token, api_key)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

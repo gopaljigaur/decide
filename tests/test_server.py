@@ -174,6 +174,28 @@ def test_systemone_200_with_correct_bearer_when_api_key_set():
     assert resp.status_code == 200
 
 
+def test_systemone_auth_uses_constant_time_comparison(monkeypatch):
+    import hmac
+
+    calls = []
+    real_compare_digest = hmac.compare_digest
+
+    def _spy(a, b):
+        calls.append((a, b))
+        return real_compare_digest(a, b)
+
+    monkeypatch.setattr(hmac, "compare_digest", _spy)
+
+    client = Client([FakeBackend(name="ok")])
+    app = create_app(client, api_key="t")
+    tc = TestClient(app)
+
+    resp = tc.post("/v1/systemone", json=_body(), headers={"Authorization": "Bearer t"})
+
+    assert resp.status_code == 200
+    assert calls == [("t", "t")]
+
+
 def test_systemone_502_when_only_backend_fails():
     failing = FakeBackend(name="down", fail=BackendError("down", "boom"))
     client = Client([failing])
