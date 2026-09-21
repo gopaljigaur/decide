@@ -116,7 +116,13 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8811)
-    serve.add_argument("--api-key", default=None, metavar="TOKEN")
+    serve.add_argument(
+        "--api-key",
+        default=None,
+        metavar="TOKEN",
+        help="Bearer token required to call the server. Falls back to the DECIDE_API_KEY "
+        "environment variable when omitted; this flag takes precedence over it.",
+    )
     serve.add_argument("--min-confidence", type=float, default=0.0, metavar="FLOAT")
 
     return parser, ask
@@ -165,17 +171,21 @@ def _format_row(name: str, answer: Answer) -> tuple[str, str, str, str]:
     raise TypeError(f"unknown answer type: {type(answer)!r}")
 
 
-def _print_table(response: Response) -> None:
-    header = ("NAME", "TYPE", "ANSWER", "PROBABILITIES")
-    rows = [_format_row(name, answer) for name, answer in response.answers.items()]
+def _padded_table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> list[str]:
+    """Render a header + rows as aligned columns, with trailing whitespace stripped per line."""
     widths = [max([len(header[i]), *(len(row[i]) for row in rows)]) for i in range(len(header))]
 
     def _fmt(row: Sequence[str]) -> str:
-        return "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row))
+        return "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip()
 
-    print(_fmt(header))
-    for row in rows:
-        print(_fmt(row))
+    return [_fmt(header), *(_fmt(row) for row in rows)]
+
+
+def _print_table(response: Response) -> None:
+    header = ("NAME", "TYPE", "ANSWER", "PROBABILITIES")
+    rows = [_format_row(name, answer) for name, answer in response.answers.items()]
+    for line in _padded_table(header, rows):
+        print(line)
 
     route = ",".join(response.meta.route)
     print(f"backend={response.meta.backend} route={route} latency={response.meta.latency_ms:.1f}ms")
@@ -231,8 +241,13 @@ def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str]]:
 
 
 def _cmd_backends(args: argparse.Namespace) -> int:
-    for name, installed, configured in _backend_status(os.environ):
-        print(f"{name}  installed={'yes' if installed else 'no'}  configured={configured}")
+    header = ("NAME", "INSTALLED", "CONFIGURED")
+    rows = [
+        (name, "yes" if installed else "no", configured)
+        for name, installed, configured in _backend_status(os.environ)
+    ]
+    for line in _padded_table(header, rows):
+        print(line)
     return 0
 
 
@@ -245,7 +260,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
     from decide.server import create_app
 
-    app = create_app(client, api_key=args.api_key)
+    api_key = args.api_key if args.api_key is not None else env.get("DECIDE_API_KEY")
+    app = create_app(client, api_key=api_key)
     run_server(app, args.host, args.port)
     return 0
 

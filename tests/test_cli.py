@@ -1,4 +1,5 @@
 import json
+import os
 
 import decide.cli as cli
 from decide.client import Client
@@ -167,8 +168,7 @@ def test_backends_lists_registry_names(capsys):
     out = capsys.readouterr().out
     assert "typesafe" in out
     assert "llm" in out
-    assert "installed=" in out
-    assert "configured=" in out
+    assert "NAME" in out and "INSTALLED" in out and "CONFIGURED" in out
 
 
 def test_backends_crossencoder_is_configured_n_a(capsys):
@@ -176,7 +176,37 @@ def test_backends_crossencoder_is_configured_n_a(capsys):
 
     out = capsys.readouterr().out
     crossencoder_line = next(line for line in out.splitlines() if line.startswith("crossencoder"))
-    assert "configured=n/a" in crossencoder_line
+    assert "n/a" in crossencoder_line.split()
+
+
+def test_backends_output_is_padded_and_aligned_with_no_trailing_whitespace(capsys):
+    code = cli.main(["backends"])
+
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines
+    for line in lines:
+        assert line == line.rstrip(), f"line has trailing whitespace: {line!r}"
+
+    rows = cli._backend_status(os.environ)
+    name_width = max(len("NAME"), *(len(name) for name, _, _ in rows))
+    header, *data_rows = lines
+    assert header.startswith("NAME".ljust(name_width) + "  ")
+    for line, (name, _installed, _configured) in zip(data_rows, rows, strict=True):
+        assert line.startswith(name.ljust(name_width) + "  ")
+
+
+def test_ask_table_rows_have_no_trailing_whitespace(monkeypatch, capsys):
+    client = Client([FakeBackend("fake")])
+    _patch_make_client(monkeypatch, client)
+
+    code = cli.main(
+        ["ask", "charged twice", "--choice", "team=billing,eng", "--noul", "refund=Refund?"]
+    )
+
+    assert code == 0
+    for line in capsys.readouterr().out.splitlines():
+        assert line == line.rstrip(), f"line has trailing whitespace: {line!r}"
 
 
 def test_backend_status_uses_given_env_mapping():
@@ -226,6 +256,38 @@ def test_serve_calls_run_server_seam(monkeypatch):
     assert captured["env"]["DECIDE_BACKENDS"] == "a,b"
     assert captured["policy"].min_confidence == 0.0
     assert captured["app"] is not None
+
+
+def test_serve_api_key_flag_wins_over_env(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(cli, "make_client", lambda env, policy: Client([FakeBackend()]))
+    monkeypatch.setattr(cli, "run_server", lambda app, host, port: None)
+    monkeypatch.setattr(
+        "decide.server.create_app",
+        lambda client, api_key=None: captured.update(api_key=api_key) or object(),
+    )
+    monkeypatch.setenv("DECIDE_API_KEY", "ENV_TOKEN")
+
+    code = cli.main(["serve", "--api-key", "FLAG_TOKEN"])
+
+    assert code == 0
+    assert captured["api_key"] == "FLAG_TOKEN"
+
+
+def test_serve_falls_back_to_env_api_key_when_flag_absent(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(cli, "make_client", lambda env, policy: Client([FakeBackend()]))
+    monkeypatch.setattr(cli, "run_server", lambda app, host, port: None)
+    monkeypatch.setattr(
+        "decide.server.create_app",
+        lambda client, api_key=None: captured.update(api_key=api_key) or object(),
+    )
+    monkeypatch.setenv("DECIDE_API_KEY", "ENV_TOKEN")
+
+    code = cli.main(["serve"])
+
+    assert code == 0
+    assert captured["api_key"] == "ENV_TOKEN"
 
 
 def test_no_command_is_usage_error(capsys):
