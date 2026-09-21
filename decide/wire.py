@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from decide.errors import BadResponseError
@@ -49,6 +50,41 @@ def to_wire_request(req: Request) -> dict[str, Any]:
     return wire
 
 
+def _get_field(a: Mapping[str, Any], key: str, name: str) -> Any:
+    """Fetch `a[key]`, raising BadResponseError (never KeyError) if it is absent."""
+    try:
+        return a[key]
+    except KeyError:
+        raise BadResponseError(
+            backend="wire", message=f"question '{name}' answer is missing field '{key}'"
+        ) from None
+
+
+def _numeric(value: Any, name: str, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise BadResponseError(
+            backend="wire",
+            message=f"question '{name}' field '{field}' must be numeric, got {value!r}",
+        )
+    return float(value)
+
+
+def _numeric_mapping(value: Any, name: str, field: str) -> dict[str, float]:
+    if not isinstance(value, Mapping):
+        raise BadResponseError(
+            backend="wire", message=f"question '{name}' field '{field}' must be a mapping"
+        )
+    return {k: _numeric(v, name, f"{field}.{k}") for k, v in value.items()}
+
+
+def _numeric_sequence(value: Any, name: str, field: str) -> list[float]:
+    if not isinstance(value, list):
+        raise BadResponseError(
+            backend="wire", message=f"question '{name}' field '{field}' must be a list"
+        )
+    return [_numeric(v, name, f"{field}[{i}]") for i, v in enumerate(value)]
+
+
 def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer]:
     """Parse a backend's wire answers into decide Answer objects, validated against `req`."""
     unknown = set(answers) - set(req.questions)
@@ -62,6 +98,10 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
         if name not in answers:
             raise BadResponseError(backend="wire", message=f"missing answer for question '{name}'")
         a = answers[name]
+        if not isinstance(a, Mapping):
+            raise BadResponseError(
+                backend="wire", message=f"answer for question '{name}' must be a mapping"
+            )
         atype = a.get("type")
 
         if isinstance(question, Choice):
@@ -70,7 +110,7 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' expected type 'choice', got {atype!r}",
                 )
-            probs = dict(a["probabilities"])
+            probs = _numeric_mapping(_get_field(a, "probabilities", name), name, "probabilities")
             choice = a.get("choice")
             if choice is None:
                 choice = max(probs, key=probs.get)
@@ -87,10 +127,12 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' expected type 'score', got {atype!r}",
                 )
-            probs = list(a["probabilities"])
+            probs = _numeric_sequence(_get_field(a, "probabilities", name), name, "probabilities")
             score = a.get("score")
             if score is None:
                 score = sum(i * p for i, p in enumerate(probs))
+            else:
+                score = _numeric(score, name, "score")
             levels = [render_content(level) for level in question.criteria]
             result[name] = ScoreAnswer(score, probs, levels)
 
@@ -100,7 +142,7 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' expected type 'noul', got {atype!r}",
                 )
-            result[name] = NoulAnswer(a["noul"])
+            result[name] = NoulAnswer(_numeric(_get_field(a, "noul", name), name, "noul"))
 
         else:
             raise TypeError(f"unknown question type: {type(question)!r}")

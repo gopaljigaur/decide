@@ -1,5 +1,6 @@
 import pytest
 
+from decide.backends.base import Capabilities
 from decide.errors import BadResponseError
 from decide.types import (
     Choice,
@@ -13,6 +14,7 @@ from decide.types import (
     ScoreAnswer,
 )
 from decide.wire import from_wire_answers, to_wire_answers, to_wire_request
+from tests.conftest import FakeBackend
 
 REQ = Request(
     state={"ticket": "charged twice"},
@@ -105,3 +107,116 @@ def test_fake_backend_fabricates_confident_answers(fake_backend):
     assert r.choices["team"].probabilities["billing"] == 0.9
     assert abs(sum(r.scores["sev"].probabilities) - 1) < 1e-9
     assert r.nouls["refund"].noul == 0.9
+
+
+def test_fake_backend_batch_capability_flag():
+    assert FakeBackend(batch=True).capabilities() == Capabilities(batch=True)
+
+
+def test_from_wire_answers_rejects_type_mismatch():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "score", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "choice", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "choice", "noul": 0.1},
+            },
+            REQ,
+        )
+
+
+def test_from_wire_answers_rejects_choice_not_among_candidates():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {
+                    "type": "choice",
+                    "choice": "sales",
+                    "probabilities": {"billing": 0.5, "eng": 0.5},
+                },
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+
+
+def test_from_wire_answers_rejects_missing_probabilities_field():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "choice": "billing"},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score"},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+
+
+def test_from_wire_answers_rejects_missing_noul_field():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul"},
+            },
+            REQ,
+        )
+
+
+def test_from_wire_answers_rejects_non_numeric_probabilities_and_noul():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": "high", "eng": 0.2}},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": ["low", "high"]},
+                "refund": {"type": "noul", "noul": 0.1},
+            },
+            REQ,
+        )
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+                "sev": {"type": "score", "probabilities": [1, 0]},
+                "refund": {"type": "noul", "noul": "yes"},
+            },
+            REQ,
+        )
