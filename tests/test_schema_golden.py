@@ -14,7 +14,7 @@ from decide.types import (
     Score,
     ScoreAnswer,
 )
-from decide.wire import to_wire_answers, to_wire_request
+from decide.wire import parse_wire_request, to_wire_answers, to_wire_request
 
 jsonschema = pytest.importorskip("jsonschema")
 
@@ -34,6 +34,21 @@ def test_our_request_validates_against_sdk_request_schema():
         model="jev-latest",
     )
     jsonschema.validate(to_wire_request(req), SCHEMA["request"])
+
+
+def test_parse_wire_request_round_trips_a_schema_valid_body():
+    body = {
+        "state": {"t": "x"},
+        "model": "jev-latest",
+        "questions": {
+            "c": {"type": "choice", "instructions": "q", "criteria": {"a": "d", "b": None}},
+            "s": {"type": "score", "instructions": "q", "criteria": ["lo", "hi"]},
+            "n": {"type": "noul", "instructions": "q", "criteria": {"true": "y"}},
+        },
+    }
+    jsonschema.validate(body, SCHEMA["request"])
+    parsed = parse_wire_request(body)
+    assert to_wire_request(parsed) == body
 
 
 def test_our_answers_validate_against_sdk_response_schema():

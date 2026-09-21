@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from decide.errors import BadResponseError
@@ -12,6 +12,7 @@ from decide.types import (
     ChoiceAnswer,
     Noul,
     NoulAnswer,
+    Question,
     Request,
     Response,
     Score,
@@ -48,6 +49,90 @@ def to_wire_request(req: Request) -> dict[str, Any]:
         wire["model"] = req.model
     wire["questions"] = {name: _wire_question(q) for name, q in req.questions.items()}
     return wire
+
+
+def _parse_wire_question(name: str, wire: Any) -> Question:
+    """Parse one wire question dict into a Choice/Score/Noul, the inverse of `_wire_question`."""
+    if not isinstance(wire, Mapping):
+        raise ValueError(f"question '{name}' must be a mapping")
+
+    qtype = wire.get("type")
+
+    if qtype == "choice":
+        if "instructions" not in wire:
+            raise ValueError(f"question '{name}' is missing 'instructions'")
+        if "criteria" not in wire:
+            raise ValueError(f"question '{name}' is missing 'criteria'")
+        criteria = wire["criteria"]
+        if not isinstance(criteria, Mapping):
+            raise ValueError(
+                f"question '{name}' criteria must be a mapping of candidate name to "
+                "description for type 'choice'"
+            )
+        return Choice(wire["instructions"], dict(criteria))
+
+    if qtype == "score":
+        if "instructions" not in wire:
+            raise ValueError(f"question '{name}' is missing 'instructions'")
+        if "criteria" not in wire:
+            raise ValueError(f"question '{name}' is missing 'criteria'")
+        criteria = wire["criteria"]
+        if isinstance(criteria, str | bytes) or not isinstance(criteria, Sequence):
+            raise ValueError(
+                f"question '{name}' criteria must be an ordered list of levels for type 'score'"
+            )
+        return Score(wire["instructions"], list(criteria))
+
+    if qtype == "noul":
+        if "instructions" not in wire:
+            raise ValueError(f"question '{name}' is missing 'instructions'")
+        criteria = wire.get("criteria")
+        if criteria is None:
+            return Noul(wire["instructions"])
+        if not isinstance(criteria, Mapping):
+            raise ValueError(
+                f"question '{name}' criteria must be a mapping with 'true'/'false' keys "
+                "for type 'noul'"
+            )
+        return Noul(wire["instructions"], dict(criteria))
+
+    raise ValueError(f"question '{name}' has unknown type {qtype!r}")
+
+
+def parse_wire_request(body: dict) -> Request:
+    """Parse a TypeSafe wire request JSON body into a Request, the inverse of `to_wire_request`.
+
+    Raises `ValueError` (never `KeyError`/`TypeError`) with a message naming the
+    offending field when the body doesn't have the shape `to_wire_request` would
+    have produced: a missing or non-mapping `questions`, a question with an
+    unknown `type`, a question missing `instructions`/`criteria`, or a `criteria`
+    container of the wrong shape for its question type.
+    """
+    if not isinstance(body, Mapping):
+        raise ValueError("request body must be a mapping")
+
+    if "state" not in body:
+        raise ValueError("request body is missing 'state'")
+    state = body["state"]
+
+    model = body.get("model")
+    if model is not None and not isinstance(model, str):
+        raise ValueError("request 'model' must be a string")
+
+    if "questions" not in body:
+        raise ValueError("request body is missing 'questions'")
+    raw_questions = body["questions"]
+    if not isinstance(raw_questions, Mapping):
+        raise ValueError("request 'questions' must be a mapping")
+    if not raw_questions:
+        raise ValueError("request 'questions' must not be empty")
+
+    questions = {name: _parse_wire_question(name, wire) for name, wire in raw_questions.items()}
+
+    try:
+        return Request(state=state, questions=questions, model=model)
+    except ValueError as exc:
+        raise ValueError(f"invalid request: {exc}") from exc
 
 
 def _get_field(a: Mapping[str, Any], key: str, name: str) -> Any:

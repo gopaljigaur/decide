@@ -13,7 +13,7 @@ from decide.types import (
     Score,
     ScoreAnswer,
 )
-from decide.wire import from_wire_answers, to_wire_answers, to_wire_request
+from decide.wire import from_wire_answers, parse_wire_request, to_wire_answers, to_wire_request
 from tests.conftest import FakeBackend
 
 REQ = Request(
@@ -277,6 +277,97 @@ def test_from_wire_answers_rejects_score_probabilities_that_are_not_a_mapping():
                 "refund": {"type": "noul", "noul": 0.1},
             },
             REQ,
+        )
+
+
+def test_parse_wire_request_inverts_to_wire_request():
+    parsed = parse_wire_request(to_wire_request(REQ))
+    assert parsed.state == REQ.state
+    assert parsed.model == REQ.model
+    assert parsed.questions == REQ.questions
+
+
+def test_parse_wire_request_handles_omitted_model_and_noul_without_criteria():
+    wire = to_wire_request(Request("s", {"q": Noul("x")}))
+    parsed = parse_wire_request(wire)
+    assert parsed.model is None
+    assert parsed.questions["q"] == Noul("x")
+
+
+def test_parse_wire_request_rejects_missing_questions():
+    with pytest.raises(ValueError, match="questions"):
+        parse_wire_request({"state": "s"})
+
+
+def test_parse_wire_request_rejects_non_mapping_questions():
+    with pytest.raises(ValueError, match="questions"):
+        parse_wire_request({"state": "s", "questions": ["not", "a", "mapping"]})
+
+
+def test_parse_wire_request_rejects_empty_questions():
+    with pytest.raises(ValueError, match="questions"):
+        parse_wire_request({"state": "s", "questions": {}})
+
+
+def test_parse_wire_request_rejects_missing_state():
+    with pytest.raises(ValueError, match="state"):
+        parse_wire_request({"questions": {"q": {"type": "noul", "instructions": "x"}}})
+
+
+def test_parse_wire_request_rejects_unknown_question_type():
+    with pytest.raises(ValueError, match="type"):
+        parse_wire_request(
+            {"state": "s", "questions": {"q": {"type": "mystery", "instructions": "x"}}}
+        )
+
+
+def test_parse_wire_request_rejects_missing_instructions():
+    with pytest.raises(ValueError, match="instructions"):
+        parse_wire_request({"state": "s", "questions": {"q": {"type": "noul"}}})
+    with pytest.raises(ValueError, match="instructions"):
+        parse_wire_request(
+            {"state": "s", "questions": {"q": {"type": "choice", "criteria": {"a": None}}}}
+        )
+    with pytest.raises(ValueError, match="instructions"):
+        parse_wire_request(
+            {"state": "s", "questions": {"q": {"type": "score", "criteria": ["a", "b"]}}}
+        )
+
+
+def test_parse_wire_request_rejects_missing_criteria_for_choice_and_score():
+    with pytest.raises(ValueError, match="criteria"):
+        parse_wire_request(
+            {"state": "s", "questions": {"q": {"type": "choice", "instructions": "x"}}}
+        )
+    with pytest.raises(ValueError, match="criteria"):
+        parse_wire_request(
+            {"state": "s", "questions": {"q": {"type": "score", "instructions": "x"}}}
+        )
+
+
+def test_parse_wire_request_rejects_wrong_criteria_container_per_type():
+    with pytest.raises(ValueError, match="criteria"):
+        parse_wire_request(
+            {
+                "state": "s",
+                "questions": {"q": {"type": "choice", "instructions": "x", "criteria": ["a", "b"]}},
+            }
+        )
+    with pytest.raises(ValueError, match="criteria"):
+        parse_wire_request(
+            {
+                "state": "s",
+                "questions": {"q": {"type": "score", "instructions": "x", "criteria": {"a": "b"}}},
+            }
+        )
+    with pytest.raises(ValueError, match="criteria"):
+        parse_wire_request(
+            {
+                "state": "s",
+                "questions": {
+                    "q": {"type": "noul", "instructions": "x", "criteria": ["true", "false"]}
+                },
+            }
         )
 
 
