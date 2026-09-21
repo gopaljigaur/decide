@@ -135,6 +135,7 @@ r.choices["team"].probabilities  # {"billing": 0.947, "eng": 0.019, "shipping": 
 | `DECIDE_LLM_MODEL` | `llm` | Model name to request; defaults to `gpt-4o-mini`. |
 | `DECIDE_BACKENDS` | `Client.from_env` | Comma-separated backend names, overriding auto-detection entirely. |
 | `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
+| `DECIDE_API_KEY` | `decide serve` | Bearer token required to call the server, when `--api-key` is not passed. The flag takes precedence over this variable. |
 
 ## Gating and fallback
 
