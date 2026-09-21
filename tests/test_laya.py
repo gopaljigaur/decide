@@ -221,6 +221,34 @@ def test_laya_mlx_without_package_gives_config_error(monkeypatch):
         LayaMLXBackend()
 
 
+# ---- Non-string state passes through unrendered --------------------------------------------
+
+
+def _backend_classes():
+    from decide.backends.laya import LayaBackend
+    from decide.backends.laya_mlx import LayaMLXBackend
+
+    return [LayaBackend, LayaMLXBackend]
+
+
+@pytest.mark.parametrize("backend_cls", _backend_classes())
+@pytest.mark.parametrize(
+    "state", [{"ticket": "charged twice", "tier": 2}, ["charged twice", {"tier": 2}]]
+)
+def test_dict_and_list_state_passed_through_unrendered(backend_cls, state):
+    req = Request(state, {"team": Choice("Which team?", {"billing": "money", "eng": "bugs"})})
+    answers = {"team": WIRE_ANSWERS["team"]}
+    agent = FakeAgent(response={"answers": answers})
+
+    backend = backend_cls(agent=agent)
+    backend.decide(req)
+
+    assert len(agent.calls) == 1
+    passed_state, _questions = agent.calls[0]
+    assert passed_state == state
+    assert not isinstance(passed_state, str)
+
+
 # ---- Live smoke -----------------------------------------------------------------------------
 
 LIVE_REQ = Request(
