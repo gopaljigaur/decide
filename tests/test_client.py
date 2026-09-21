@@ -274,6 +274,21 @@ class _AsyncClosingBackend(FakeBackend):
         self.aclosed = True
 
 
+class _BothClosingBackend(FakeBackend):
+    """Exposes both `aclose` and sync `close`, like an HTTP backend holding both clients."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.aclosed = False
+        self.closed = False
+
+    async def aclose(self):
+        self.aclosed = True
+
+    def close(self):
+        self.closed = True
+
+
 def test_client_context_manager_closes_backends():
     backend = _ClosingBackend("a")
     with Client([backend]) as c:
@@ -292,6 +307,13 @@ async def test_async_client_context_manager_falls_back_to_close():
     backend = _ClosingBackend("a")
     async with AsyncClient([backend]):
         pass
+    assert backend.closed
+
+
+async def test_async_client_aclose_also_calls_sync_close_when_both_present():
+    backend = _BothClosingBackend("a")
+    await AsyncClient([backend]).aclose()
+    assert backend.aclosed
     assert backend.closed
 
 
@@ -327,6 +349,27 @@ def test_from_env_explicit_order(monkeypatch):
     c = Client.from_env(
         env={"DECIDE_BACKENDS": "llm,typesafe", "TYPESAFE_API_KEY": "k", "OPENAI_API_KEY": "z"}
     )
+    assert [b.name for b in c.backends] == ["llm", "typesafe"]
+
+
+def test_from_env_explicit_order_deduplicates_preserving_first_occurrence(monkeypatch):
+    import decide.client as mod
+
+    made = []
+
+    def _load(name, **kw):
+        made.append(name)
+        return FakeBackend(name)
+
+    monkeypatch.setattr(mod, "load_backend", _load)
+    c = Client.from_env(
+        env={
+            "DECIDE_BACKENDS": "llm,typesafe,llm",
+            "TYPESAFE_API_KEY": "k",
+            "OPENAI_API_KEY": "z",
+        }
+    )
+    assert made == ["llm", "typesafe"]
     assert [b.name for b in c.backends] == ["llm", "typesafe"]
 
 

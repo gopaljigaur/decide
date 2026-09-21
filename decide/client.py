@@ -372,7 +372,6 @@ class AsyncClient:
             aclose = getattr(backend, "aclose", None)
             if callable(aclose):
                 await aclose()
-                continue
             close = getattr(backend, "close", None)
             if callable(close):
                 close()
@@ -434,7 +433,13 @@ def _resolve_env_backends(
 
     explicit = env.get("DECIDE_BACKENDS")
     if explicit is not None and explicit.strip():
-        names = [n.strip() for n in explicit.split(",") if n.strip()]
+        seen: set[str] = set()
+        names = []
+        for n in explicit.split(","):
+            n = n.strip()
+            if n and n not in seen:
+                seen.add(n)
+                names.append(n)
         kwargs_by_name = {name: _kwargs_for(name, env) for name in names}
         return names, kwargs_by_name
 
