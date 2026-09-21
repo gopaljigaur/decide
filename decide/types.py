@@ -93,7 +93,10 @@ class ChoiceAnswer:
 
 @dataclass(frozen=True)
 class ScoreAnswer:
-    """`score` is the expected level index in [0, len(levels) - 1]."""
+    """`score` is the expected level index in [0, len(levels) - 1].
+
+    `probabilities` are the backend's outputs. They are not guarantees of correctness.
+    """
 
     score: float
     probabilities: list[float]
@@ -102,6 +105,8 @@ class ScoreAnswer:
 
 @dataclass(frozen=True)
 class NoulAnswer:
+    """`noul` is the model output in [0, 1]. It is not a guarantee of correctness."""
+
     noul: float
 
 
