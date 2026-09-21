@@ -64,9 +64,7 @@ def create_app(client: Client, *, api_key: str | None = None) -> "FastAPI":
         scheme, _, token = request.headers.get("authorization", "").partition(" ")
         if scheme.lower() != "bearer":
             return False
-        if not isinstance(token, str) or not isinstance(api_key, str):
-            return False
-        return hmac.compare_digest(token, api_key)
+        return hmac.compare_digest(token.encode("utf-8"), api_key.encode("utf-8"))
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

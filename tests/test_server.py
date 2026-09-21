@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from decide.client import Client
@@ -193,7 +195,81 @@ def test_systemone_auth_uses_constant_time_comparison(monkeypatch):
     resp = tc.post("/v1/systemone", json=_body(), headers={"Authorization": "Bearer t"})
 
     assert resp.status_code == 200
-    assert calls == [("t", "t")]
+    assert calls == [(b"t", b"t")]
+
+
+async def _asgi_post(
+    app, path: str, *, headers: list[tuple[bytes, bytes]], body: bytes
+) -> tuple[int, bytes]:
+    """Drive an ASGI app directly with raw header bytes.
+
+    httpx's TestClient refuses to send non-ASCII header values, so a bare ASGI
+    scope/receive/send is needed to exercise a non-ASCII `Authorization` header.
+    """
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "headers": [(b"content-type", b"application/json"), *headers],
+        "client": ("test", 123),
+        "server": ("test", 80),
+        "scheme": "http",
+    }
+
+    response = {"status": None, "body": b""}
+    sent = False
+
+    async def receive():
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            response["status"] = message["status"]
+        elif message["type"] == "http.response.body":
+            response["body"] += message.get("body", b"")
+
+    await app(scope, receive, send)
+    return response["status"], response["body"]
+
+
+async def test_systemone_401_with_non_ascii_bearer_token_does_not_crash():
+    client = Client([FakeBackend()])
+    app = create_app(client, api_key="t")
+
+    status, body = await _asgi_post(
+        app,
+        "/v1/systemone",
+        headers=[(b"authorization", b"Bearer \xe9")],
+        body=json.dumps(_body()).encode(),
+    )
+
+    assert status == 401
+    assert json.loads(body)["error"]["type"] == "authentication_error"
+
+
+async def test_systemone_200_with_non_ascii_api_key_and_matching_token():
+    client = Client([FakeBackend(name="ok")])
+    api_key = "café"
+    app = create_app(client, api_key=api_key)
+
+    status, _body_bytes = await _asgi_post(
+        app,
+        "/v1/systemone",
+        # Header bytes are latin-1 decoded by Starlette, so latin-1-encode here
+        # to round-trip back to the same `api_key` string on the other end.
+        headers=[(b"authorization", b"Bearer " + api_key.encode("latin-1"))],
+        body=json.dumps(_body()).encode(),
+    )
+
+    assert status == 200
 
 
 def test_systemone_502_when_only_backend_fails():
