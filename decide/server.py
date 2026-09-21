@@ -15,6 +15,7 @@ inside `create_app` so the core library has no hard dependency on it.
 # request object. Keeping annotations eagerly evaluated avoids that.
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 
 from decide.client import Client
@@ -23,6 +24,8 @@ from decide.wire import parse_wire_request, to_wire_answers
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 
 
 def _error_response(status_code: int, message: str, error_type: str, **extra: Any) -> Any:
@@ -94,23 +97,25 @@ def create_app(client: Client, *, api_key: str | None = None) -> "FastAPI":
                 wire_request.questions,
                 model=wire_request.model,
             )
+            model_name = (
+                response.meta.model if response.meta.model is not None else response.meta.backend
+            )
+            return {
+                "model": model_name,
+                "answers": to_wire_answers(response),
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "decide": {
+                    "backend": response.meta.backend,
+                    "latency_ms": response.meta.latency_ms,
+                    "route": response.meta.route,
+                },
+            }
         except AllBackendsFailed as exc:
             return _error_response(502, str(exc), "backend_error", route=exc.route)
         except DecideError as exc:
             return _error_response(500, str(exc), "backend_error")
-
-        model_name = (
-            response.meta.model if response.meta.model is not None else response.meta.backend
-        )
-        return {
-            "model": model_name,
-            "answers": to_wire_answers(response),
-            "usage": {"input_tokens": 0, "output_tokens": 0},
-            "decide": {
-                "backend": response.meta.backend,
-                "latency_ms": response.meta.latency_ms,
-                "route": response.meta.route,
-            },
-        }
+        except Exception:
+            logger.exception("unexpected error handling POST /v1/systemone")
+            return _error_response(500, "internal error", "server_error")
 
     return app

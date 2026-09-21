@@ -314,6 +314,30 @@ def test_parse_wire_request_rejects_missing_state():
         parse_wire_request({"questions": {"q": {"type": "noul", "instructions": "x"}}})
 
 
+@pytest.mark.parametrize("bad_state", [42, None, True, b"bytes"])
+def test_parse_wire_request_rejects_wrong_state_type(bad_state):
+    with pytest.raises(ValueError, match="state"):
+        parse_wire_request(
+            {
+                "state": bad_state,
+                "questions": {"q": {"type": "noul", "instructions": "x"}},
+            }
+        )
+
+
+@pytest.mark.parametrize("good_state", ["text", {"a": 1}, [1, 2, 3]])
+def test_parse_wire_request_accepts_str_mapping_and_sequence_state(good_state):
+    parsed = parse_wire_request(
+        {"state": good_state, "questions": {"q": {"type": "noul", "instructions": "x"}}}
+    )
+    assert parsed.state == good_state
+
+
+def test_parse_wire_request_rejects_non_mapping_body():
+    with pytest.raises(ValueError, match="mapping"):
+        parse_wire_request(["not", "a", "mapping"])
+
+
 def test_parse_wire_request_rejects_unknown_question_type():
     with pytest.raises(ValueError, match="type"):
         parse_wire_request(
@@ -321,17 +345,28 @@ def test_parse_wire_request_rejects_unknown_question_type():
         )
 
 
-def test_parse_wire_request_rejects_missing_instructions():
-    with pytest.raises(ValueError, match="instructions"):
-        parse_wire_request({"state": "s", "questions": {"q": {"type": "noul"}}})
-    with pytest.raises(ValueError, match="instructions"):
-        parse_wire_request(
-            {"state": "s", "questions": {"q": {"type": "choice", "criteria": {"a": None}}}}
-        )
-    with pytest.raises(ValueError, match="instructions"):
-        parse_wire_request(
-            {"state": "s", "questions": {"q": {"type": "score", "criteria": ["a", "b"]}}}
-        )
+def test_parse_wire_request_defaults_missing_or_null_instructions_to_empty_string():
+    parsed = parse_wire_request(
+        {
+            "state": "s",
+            "questions": {
+                "noul_missing": {"type": "noul"},
+                "noul_null": {"type": "noul", "instructions": None},
+                "choice": {"type": "choice", "criteria": {"a": None}},
+                "score": {"type": "score", "criteria": ["a", "b"]},
+            },
+        }
+    )
+    assert parsed.questions["noul_missing"] == Noul("")
+    assert parsed.questions["noul_null"] == Noul("")
+    assert parsed.questions["choice"] == Choice("", {"a": None})
+    assert parsed.questions["score"] == Score("", ["a", "b"])
+
+    # Round-trips: the empty default is a real instructions value, not an omission.
+    wire = to_wire_request(parsed)
+    assert wire["questions"]["noul_missing"]["instructions"] == ""
+    assert wire["questions"]["choice"]["instructions"] == ""
+    assert wire["questions"]["score"]["instructions"] == ""
 
 
 def test_parse_wire_request_rejects_missing_criteria_for_choice_and_score():

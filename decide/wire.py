@@ -51,6 +51,18 @@ def to_wire_request(req: Request) -> dict[str, Any]:
     return wire
 
 
+def _wire_instructions(wire: Mapping[str, Any]) -> str | Mapping[str, Any] | Sequence[Any]:
+    """Read a wire question's `instructions`, defaulting a missing or null value to `""`.
+
+    The SDK's request schema makes `instructions` optional (default `null`), but
+    decide's `Choice`/`Score`/`Noul` all require a `Content` value, so a missing or
+    explicit `null` instructions is treated as an empty instruction rather than
+    rejected.
+    """
+    instructions = wire.get("instructions")
+    return instructions if instructions is not None else ""
+
+
 def _parse_wire_question(name: str, wire: Any) -> Question:
     """Parse one wire question dict into a Choice/Score/Noul, the inverse of `_wire_question`."""
     if not isinstance(wire, Mapping):
@@ -59,8 +71,6 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
     qtype = wire.get("type")
 
     if qtype == "choice":
-        if "instructions" not in wire:
-            raise ValueError(f"question '{name}' is missing 'instructions'")
         if "criteria" not in wire:
             raise ValueError(f"question '{name}' is missing 'criteria'")
         criteria = wire["criteria"]
@@ -69,11 +79,9 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
                 f"question '{name}' criteria must be a mapping of candidate name to "
                 "description for type 'choice'"
             )
-        return Choice(wire["instructions"], dict(criteria))
+        return Choice(_wire_instructions(wire), dict(criteria))
 
     if qtype == "score":
-        if "instructions" not in wire:
-            raise ValueError(f"question '{name}' is missing 'instructions'")
         if "criteria" not in wire:
             raise ValueError(f"question '{name}' is missing 'criteria'")
         criteria = wire["criteria"]
@@ -81,20 +89,18 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
             raise ValueError(
                 f"question '{name}' criteria must be an ordered list of levels for type 'score'"
             )
-        return Score(wire["instructions"], list(criteria))
+        return Score(_wire_instructions(wire), list(criteria))
 
     if qtype == "noul":
-        if "instructions" not in wire:
-            raise ValueError(f"question '{name}' is missing 'instructions'")
         criteria = wire.get("criteria")
         if criteria is None:
-            return Noul(wire["instructions"])
+            return Noul(_wire_instructions(wire))
         if not isinstance(criteria, Mapping):
             raise ValueError(
                 f"question '{name}' criteria must be a mapping with 'true'/'false' keys "
                 "for type 'noul'"
             )
-        return Noul(wire["instructions"], dict(criteria))
+        return Noul(_wire_instructions(wire), dict(criteria))
 
     raise ValueError(f"question '{name}' has unknown type {qtype!r}")
 
@@ -104,9 +110,11 @@ def parse_wire_request(body: dict) -> Request:
 
     Raises `ValueError` (never `KeyError`/`TypeError`) with a message naming the
     offending field when the body doesn't have the shape `to_wire_request` would
-    have produced: a missing or non-mapping `questions`, a question with an
-    unknown `type`, a question missing `instructions`/`criteria`, or a `criteria`
-    container of the wrong shape for its question type.
+    have produced: a missing/wrongly-typed `state`, a missing or non-mapping
+    `questions`, a question with an unknown `type`, a question missing `criteria`,
+    or a `criteria` container of the wrong shape for its question type. A
+    question's missing or null `instructions` is not an error -- it defaults to
+    `""` (see `_wire_instructions`).
     """
     if not isinstance(body, Mapping):
         raise ValueError("request body must be a mapping")
@@ -114,6 +122,10 @@ def parse_wire_request(body: dict) -> Request:
     if "state" not in body:
         raise ValueError("request body is missing 'state'")
     state = body["state"]
+    if isinstance(state, bytes) or not isinstance(state, str | Mapping | Sequence):
+        raise ValueError(
+            f"request 'state' must be a string, an object, or an array; got {type(state).__name__}"
+        )
 
     model = body.get("model")
     if model is not None and not isinstance(model, str):

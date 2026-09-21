@@ -2,7 +2,8 @@ import pytest
 
 from decide.client import Client
 from decide.errors import AllBackendsFailed, BackendError
-from decide.types import Choice, Noul, Score
+from decide.gate import Gate
+from decide.types import Choice, ChoiceAnswer, Noul, Score
 from tests.conftest import FakeBackend
 
 fastapi = pytest.importorskip("fastapi")
@@ -103,6 +104,31 @@ def test_systemone_400_when_questions_missing():
     assert "questions" in body["error"]["message"]
 
 
+@pytest.mark.parametrize("bad_state", [42, None, True])
+def test_systemone_400_when_state_has_wrong_type(bad_state):
+    client = Client([FakeBackend()])
+    app = create_app(client)
+    tc = TestClient(app)
+
+    resp = tc.post("/v1/systemone", json=_body(state=bad_state))
+
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["error"]["type"] == "invalid_request_error"
+    assert "state" in body["error"]["message"]
+
+
+def test_systemone_400_when_body_is_not_a_mapping():
+    client = Client([FakeBackend()])
+    app = create_app(client)
+    tc = TestClient(app)
+
+    resp = tc.post("/v1/systemone", json=["not", "a", "mapping"])
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["type"] == "invalid_request_error"
+
+
 def test_systemone_400_on_invalid_json():
     client = Client([FakeBackend()])
     app = create_app(client)
@@ -176,6 +202,56 @@ def test_systemone_502_body_reports_all_backends_failed_route(monkeypatch):
         client.decide("ticket text", {"refund": Noul("Refund asked?")})
     except AllBackendsFailed as exc:
         assert resp.json()["error"]["route"] == exc.route
+
+
+def test_systemone_500_when_backend_error_raised_directly():
+    # policy.on_error == "raise" makes Client._run_chain re-raise the original
+    # BackendError instead of wrapping it in AllBackendsFailed; the server must
+    # still catch it (as a DecideError) and return the nested envelope, not leak it.
+    failing = FakeBackend(name="down", fail=BackendError("down", "boom"))
+    client = Client([failing], policy=Gate(on_error="raise"))
+    app = create_app(client)
+    tc = TestClient(app)
+
+    resp = tc.post("/v1/systemone", json=_body())
+
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["error"]["type"] == "backend_error"
+
+
+def test_systemone_500_when_encoding_response_fails():
+    # client.decide() succeeds (the Gate only inspects the probabilities that are
+    # present, so a non-empty-but-inconsistent ChoiceAnswer still passes), but
+    # to_wire_answers() then raises BadResponseError while encoding the response.
+    # That must also come back as a 500 backend_error envelope, not an unhandled
+    # exception escaping the route.
+    bad = FakeBackend(name="ok", answers={"team": ChoiceAnswer("billing", {"eng": 0.9})})
+    client = Client([bad])
+    app = create_app(client)
+    tc = TestClient(app)
+
+    resp = tc.post("/v1/systemone", json=_body())
+
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["error"]["type"] == "backend_error"
+
+
+def test_systemone_500_server_error_on_unexpected_exception():
+    def boom(request):
+        raise RuntimeError("kaboom")
+
+    backend = FakeBackend(name="ok", answers=boom)
+    client = Client([backend])
+    app = create_app(client)
+    tc = TestClient(app)
+
+    resp = tc.post("/v1/systemone", json=_body())
+
+    assert resp.status_code == 500
+    body = resp.json()
+    assert body["error"] == {"message": "internal error", "type": "server_error"}
 
 
 def test_create_app_config_error_without_fastapi(monkeypatch):
