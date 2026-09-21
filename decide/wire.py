@@ -80,23 +80,26 @@ def _numeric_mapping(value: Any, name: str, field: str) -> dict[str, float]:
 def _indexed_numeric_mapping(value: Any, name: str, field: str, n: int) -> list[float]:
     """Parse a `{"0": ..., "1": ..., ...}`-style mapping into an ordered `list[float]`.
 
-    TypeSafe's `SystemOneResponse.ScoreAnswer.probabilities` (and `.legend`) key
-    each score level by its stringified index rather than using a JSON array.
+    TypeSafe's `SystemOneResponse.ScoreAnswer.probabilities` keys each score
+    level by its stringified index rather than using a JSON array (its sibling
+    `legend` field uses the same index keys, but this function only parses
+    `probabilities`; `from_wire_answers` never reads `legend` -- levels come
+    from the question's own `criteria`). A missing index defaults to 0.0, and
+    a key that isn't one of the expected indices is ignored, so a sparse or
+    over-complete mapping from the backend is tolerated.
     """
     if not isinstance(value, Mapping):
         raise BadResponseError(
             backend="wire", message=f"question '{name}' field '{field}' must be a mapping"
         )
-    expected = {str(i) for i in range(n)}
-    if set(value) != expected:
-        raise BadResponseError(
-            backend="wire",
-            message=(
-                f"question '{name}' field '{field}' must have keys {sorted(expected)}, "
-                f"got {sorted(value)}"
-            ),
-        )
-    return [_numeric(value[str(i)], name, f"{field}.{i}") for i in range(n)]
+    result = []
+    for i in range(n):
+        key = str(i)
+        if key in value:
+            result.append(_numeric(value[key], name, f"{field}.{i}"))
+        else:
+            result.append(0.0)
+    return result
 
 
 def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer]:
@@ -171,19 +174,39 @@ def to_wire_answers(resp: Response) -> dict[str, Any]:
 
     `confidence` (Choice, Score) and `legend` (Score) are required by TypeSafe's
     `SystemOneResponse.Answer` schema but aren't stored on `ChoiceAnswer`/
-    `ScoreAnswer`; they're derived here the same way `Gate.confidence` derives
-    confidence from probabilities (max probability = confidence in the top pick).
+    `ScoreAnswer`, so they're derived here: a Choice's confidence is the
+    probability of its own `choice` (which may differ from the probability
+    argmax -- `from_wire_answers` accepts an explicit `choice` field even when
+    it isn't the top-probability candidate); a Score's confidence is its top
+    level probability, in the same "max probability" spirit as
+    `Gate.confidence`'s Choice/Noul derivation.
     """
     wire: dict[str, Any] = {}
     for name, answer in resp.answers.items():
         if isinstance(answer, ChoiceAnswer):
+            if not answer.probabilities:
+                raise BadResponseError(
+                    backend="wire", message=f"answer '{name}' has no probabilities"
+                )
+            if answer.choice not in answer.probabilities:
+                raise BadResponseError(
+                    backend="wire",
+                    message=(
+                        f"answer '{name}' choice {answer.choice!r} is not among "
+                        "its own probabilities"
+                    ),
+                )
             wire[name] = {
                 "type": "choice",
                 "choice": answer.choice,
-                "confidence": max(answer.probabilities.values()),
+                "confidence": answer.probabilities[answer.choice],
                 "probabilities": dict(answer.probabilities),
             }
         elif isinstance(answer, ScoreAnswer):
+            if not answer.probabilities:
+                raise BadResponseError(
+                    backend="wire", message=f"answer '{name}' has no probabilities"
+                )
             wire[name] = {
                 "type": "score",
                 "score": answer.score,

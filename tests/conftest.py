@@ -74,15 +74,15 @@ class FakeBackend(BaseBackend):
             return NoulAnswer(self.confidence)
         raise TypeError(f"unknown question type: {type(question)!r}")
 
-    def _decide(self, request: Request) -> tuple[dict[str, Answer], Any]:
+    def _decide(self, request: Request) -> tuple[dict[str, Answer], Any, str | None]:
         self.calls.append(request)
         if self.fail is not None:
             raise self.fail
         if callable(self.answers):
-            return dict(self.answers(request)), None
+            return dict(self.answers(request)), None, None
         if self.answers is not None:
-            return dict(self.answers), None
-        return {name: self._fabricate(q) for name, q in request.questions.items()}, None
+            return dict(self.answers), None, None
+        return {name: self._fabricate(q) for name, q in request.questions.items()}, None, None
 
 
 @pytest.fixture

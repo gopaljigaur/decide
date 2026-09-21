@@ -17,13 +17,19 @@ for validation, hence the choice here.)
 import json
 import pathlib
 
-import pydantic
-from typesafe_sdk._schemas.models import SystemOneRequest, SystemOneResponse
 
-out = {
-    "request": pydantic.TypeAdapter(SystemOneRequest).json_schema(),
-    "response": pydantic.TypeAdapter(SystemOneResponse).json_schema(),
-}
-pathlib.Path("tests/fixtures/typesafe_schema.json").write_text(
-    json.dumps(out, indent=2, sort_keys=True)
-)
+def main() -> None:
+    import pydantic
+    from typesafe_sdk._schemas.models import SystemOneRequest, SystemOneResponse
+
+    out = {
+        "request": pydantic.TypeAdapter(SystemOneRequest).json_schema(),
+        "response": pydantic.TypeAdapter(SystemOneResponse).json_schema(),
+    }
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    out_path = repo_root / "tests" / "fixtures" / "typesafe_schema.json"
+    out_path.write_text(json.dumps(out, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

@@ -107,6 +107,43 @@ def test_round_trip_answers():
     assert w["refund"] == {"type": "noul", "noul": 0.2}
 
 
+def test_to_wire_answers_choice_confidence_is_probability_of_chosen_option():
+    # `choice` can legitimately differ from the probability argmax (e.g. a caller
+    # constructed the answer directly, or `from_wire_answers` accepted an explicit
+    # `choice` field that wasn't the top-probability candidate). `confidence` must
+    # track the chosen option's own probability, not just the highest one.
+    resp = Response(
+        answers={"team": ChoiceAnswer("billing", {"billing": 0.3, "eng": 0.7})},
+        meta=Meta("fake", None, 0.0),
+    )
+    w = to_wire_answers(resp)
+    assert w["team"]["confidence"] == 0.3
+
+
+def test_to_wire_answers_rejects_choice_answer_with_no_probabilities():
+    resp = Response(answers={"team": ChoiceAnswer("billing", {})}, meta=Meta("fake", None, 0.0))
+    with pytest.raises(BadResponseError):
+        to_wire_answers(resp)
+
+
+def test_to_wire_answers_rejects_choice_not_in_its_own_probabilities():
+    resp = Response(
+        answers={"team": ChoiceAnswer("sales", {"billing": 0.5, "eng": 0.5})},
+        meta=Meta("fake", None, 0.0),
+    )
+    with pytest.raises(BadResponseError):
+        to_wire_answers(resp)
+
+
+def test_to_wire_answers_rejects_score_answer_with_no_probabilities():
+    resp = Response(
+        answers={"sev": ScoreAnswer(0.0, [], ["minor", "blocked"])},
+        meta=Meta("fake", None, 0.0),
+    )
+    with pytest.raises(BadResponseError):
+        to_wire_answers(resp)
+
+
 def test_fake_backend_fabricates_confident_answers(fake_backend):
     r = fake_backend.decide(REQ)
     assert r.meta.backend == "fake" and r.meta.latency_ms >= 0
@@ -229,7 +266,7 @@ def test_from_wire_answers_rejects_non_numeric_probabilities_and_noul():
         )
 
 
-def test_from_wire_answers_rejects_score_probabilities_not_index_keyed_mapping():
+def test_from_wire_answers_rejects_score_probabilities_that_are_not_a_mapping():
     # TypeSafe's SystemOneResponse represents Score probabilities as an object keyed
     # by stringified level index ("0", "1", ...), matching `legend`, not a JSON array.
     with pytest.raises(BadResponseError):
@@ -241,21 +278,18 @@ def test_from_wire_answers_rejects_score_probabilities_not_index_keyed_mapping()
             },
             REQ,
         )
-    with pytest.raises(BadResponseError):
-        from_wire_answers(
-            {
-                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": {"lo": 1, "hi": 0}},
-                "refund": {"type": "noul", "noul": 0.1},
-            },
-            REQ,
-        )
-    with pytest.raises(BadResponseError):
-        from_wire_answers(
-            {
-                "team": {"type": "choice", "probabilities": {"billing": 1.0}},
-                "sev": {"type": "score", "probabilities": {"0": 1}},
-                "refund": {"type": "noul", "noul": 0.1},
-            },
-            REQ,
-        )
+
+
+def test_from_wire_answers_tolerates_sparse_score_probabilities():
+    # A missing index defaults to 0.0, and a key that isn't a valid index (e.g. a
+    # stray non-integer key, or an out-of-range index) is ignored rather than
+    # rejected.
+    a = from_wire_answers(
+        {
+            "team": {"type": "choice", "probabilities": {"billing": 1.0}},
+            "sev": {"type": "score", "probabilities": {"0": 0.4, "lo": 1, "9": 1}},
+            "refund": {"type": "noul", "noul": 0.1},
+        },
+        REQ,
+    )
+    assert a["sev"] == ScoreAnswer(0.0, [0.4, 0.0], ["minor", "blocked"])

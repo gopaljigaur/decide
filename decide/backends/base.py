@@ -32,8 +32,17 @@ class Backend(Protocol):
 class BaseBackend:
     """Common scaffolding for backend implementations.
 
-    Subclasses implement `_decide` and may override `capabilities`, `adecide`
-    and `decide_batch` for backend-specific behavior (e.g. real batching).
+    Subclasses implement `_decide` (and, for a real async transport rather than
+    a thread-pooled sync call, `_adecide`) and may override `capabilities` and
+    `decide_batch` for backend-specific behavior (e.g. real batching).
+
+    `_decide`/`_adecide` return `(answers, raw, model)`: `model` is the model
+    name actually used to answer, or `None` to mean "report `self.model`" (the
+    common case for backends with a single fixed or instance-configured
+    model). This lets a backend that resolves its model per-request (e.g. from
+    `request.model` or a value the response itself reports) surface that in
+    `Meta.model` instead of `decide()`/`adecide()` always reporting the
+    backend's static default.
     """
 
     name = "base"
@@ -44,24 +53,39 @@ class BaseBackend:
 
     def decide(self, request: Request) -> Response:
         start = time.perf_counter()
-        answers, raw = self._decide(request)
+        answers, raw, model = self._decide(request)
         latency_ms = (time.perf_counter() - start) * 1000
         return Response(
             answers=answers,
             meta=Meta(
                 backend=self.name,
-                model=self.model,
+                model=model if model is not None else self.model,
                 latency_ms=latency_ms,
                 route=[],
                 raw=raw,
             ),
         )
 
-    def _decide(self, request: Request) -> tuple[dict[str, Answer], Any]:
+    def _decide(self, request: Request) -> tuple[dict[str, Answer], Any, str | None]:
         raise NotImplementedError
 
     async def adecide(self, request: Request) -> Response:
-        return await asyncio.to_thread(self.decide, request)
+        start = time.perf_counter()
+        answers, raw, model = await self._adecide(request)
+        latency_ms = (time.perf_counter() - start) * 1000
+        return Response(
+            answers=answers,
+            meta=Meta(
+                backend=self.name,
+                model=model if model is not None else self.model,
+                latency_ms=latency_ms,
+                route=[],
+                raw=raw,
+            ),
+        )
+
+    async def _adecide(self, request: Request) -> tuple[dict[str, Answer], Any, str | None]:
+        return await asyncio.to_thread(self._decide, request)
 
     def decide_batch(self, requests: Sequence[Request]) -> list[Response]:
         return [self.decide(r) for r in requests]

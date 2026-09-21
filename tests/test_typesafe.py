@@ -43,6 +43,8 @@ def test_request_shape_and_headers():
     assert seen["body"]["questions"]["team"]["type"] == "choice"
     assert resp.choices["team"].choice == "billing"
     assert resp.meta.backend == "typesafe" and resp.meta.raw == OK
+    # DEFAULT_MODEL, since neither the instance nor the request set one.
+    assert resp.meta.model == "jev-latest"
 
 
 def test_model_precedence():
@@ -52,10 +54,40 @@ def test_model_precedence():
         seen["m"] = json.loads(r.content)["model"]
         return httpx.Response(200, json=OK)
 
-    _backend(handler, model="jev-1.13").decide(REQ)
-    assert seen["m"] == "jev-1.13"
-    _backend(handler).decide(Request(REQ.state, REQ.questions, model="jev-x"))
-    assert seen["m"] == "jev-x"
+    r1 = _backend(handler, model="jev-1.13").decide(REQ)
+    assert seen["m"] == "jev-1.13" and r1.meta.model == "jev-1.13"
+
+    r2 = _backend(handler).decide(Request(REQ.state, REQ.questions, model="jev-x"))
+    assert seen["m"] == "jev-x" and r2.meta.model == "jev-x"
+
+    # request.model wins over the instance's configured model.
+    r3 = _backend(handler, model="jev-1.13").decide(
+        Request(REQ.state, REQ.questions, model="jev-x")
+    )
+    assert seen["m"] == "jev-x" and r3.meta.model == "jev-x"
+
+
+def test_meta_model_prefers_response_body_model_when_present():
+    # SystemOneResponse's own `model` "may differ from the alias supplied in the
+    # request" (e.g. an alias like "jev-latest" resolves to a concrete version);
+    # Meta.model should report what actually answered, not what was requested.
+    body = {**OK, "model": "jev-2024-06-01"}
+
+    def handler(r):
+        return httpx.Response(200, json=body)
+
+    resp = _backend(handler).decide(REQ)
+    assert resp.meta.model == "jev-2024-06-01"
+
+
+def test_meta_model_ignores_non_string_response_body_model():
+    body = {**OK, "model": None}
+
+    def handler(r):
+        return httpx.Response(200, json=body)
+
+    resp = _backend(handler, model="jev-1.13").decide(REQ)
+    assert resp.meta.model == "jev-1.13"
 
 
 @pytest.mark.parametrize("status,exc", [(401, AuthError), (403, AuthError), (429, RateLimitError)])
@@ -95,6 +127,57 @@ async def test_async_path():
     b = _backend(lambda r: httpx.Response(200, json=OK))
     r = await b.adecide(REQ)
     assert r.nouls["refund"].noul == 0.8
+    assert r.meta.model == "jev-latest"
+
+
+def test_client_is_created_lazily_and_reused_across_calls():
+    b = _backend(lambda r: httpx.Response(200, json=OK))
+    assert b._client is None
+    b.decide(REQ)
+    client = b._client
+    assert client is not None
+    b.decide(REQ)
+    assert b._client is client
+
+
+async def test_aclient_is_created_lazily_and_reused_across_calls():
+    b = _backend(lambda r: httpx.Response(200, json=OK))
+    assert b._aclient is None
+    await b.adecide(REQ)
+    aclient = b._aclient
+    assert aclient is not None
+    await b.adecide(REQ)
+    assert b._aclient is aclient
+
+
+def test_close_closes_the_sync_client():
+    b = _backend(lambda r: httpx.Response(200, json=OK))
+    b.decide(REQ)
+    client = b._client
+    assert client.is_closed is False
+    b.close()
+    assert client.is_closed is True
+    assert b._client is None
+
+
+async def test_aclose_closes_the_async_client():
+    b = _backend(lambda r: httpx.Response(200, json=OK))
+    await b.adecide(REQ)
+    aclient = b._aclient
+    assert aclient.is_closed is False
+    await b.aclose()
+    assert aclient.is_closed is True
+    assert b._aclient is None
+
+
+async def test_same_transport_serves_both_sync_and_async_clients():
+    # `transport` accepts either httpx.BaseTransport or httpx.AsyncBaseTransport;
+    # httpx.MockTransport implements both, so one instance can back a backend
+    # used for both `decide()` and `adecide()`.
+    b = _backend(lambda r: httpx.Response(200, json=OK))
+    sync_resp = b.decide(REQ)
+    async_resp = await b.adecide(REQ)
+    assert sync_resp.nouls["refund"].noul == async_resp.nouls["refund"].noul == 0.8
 
 
 @pytest.mark.live

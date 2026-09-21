@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 import httpx
@@ -15,7 +14,7 @@ from decide.errors import (
     BadResponseError,
     RateLimitError,
 )
-from decide.types import Answer, Meta, Request, Response
+from decide.types import Answer, Request
 from decide.wire import from_wire_answers, to_wire_request
 
 
@@ -32,7 +31,7 @@ class TypeSafeBackend(BaseBackend):
         base_url: str | None = None,
         model: str | None = None,
         timeout: float = 30.0,
-        transport: httpx.BaseTransport | None = None,
+        transport: httpx.BaseTransport | httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
@@ -65,16 +64,19 @@ class TypeSafeBackend(BaseBackend):
             )
         return self._aclient
 
+    def _resolved_model(self, request: Request) -> str:
+        return request.model or self.model or self.DEFAULT_MODEL
+
     def _body(self, request: Request) -> dict[str, Any]:
         """Render the wire request body with `model` resolved to
         `request.model or self.model or self.DEFAULT_MODEL`."""
         wire = to_wire_request(request)
-        wire["model"] = request.model or self.model or self.DEFAULT_MODEL
+        wire["model"] = self._resolved_model(request)
         return wire
 
     def _handle_response(
         self, response: httpx.Response, request: Request
-    ) -> tuple[dict[str, Answer], Any]:
+    ) -> tuple[dict[str, Answer], Any, str]:
         if response.status_code in (401, 403):
             raise AuthError(self.name, f"authentication failed (HTTP {response.status_code})")
         if response.status_code == 429:
@@ -88,9 +90,14 @@ class TypeSafeBackend(BaseBackend):
         if not isinstance(data, dict) or "answers" not in data:
             raise BadResponseError(self.name, "response JSON is missing 'answers'")
         answers = from_wire_answers(data["answers"], request)
-        return answers, data
+        # Report the model that actually answered when the backend tells us
+        # (SystemOneResponse's `model` "may differ from the alias supplied in
+        # the request"), else fall back to the one we requested.
+        response_model = data.get("model")
+        model = response_model if isinstance(response_model, str) and response_model else None
+        return answers, data, model or self._resolved_model(request)
 
-    def _decide(self, request: Request) -> tuple[dict[str, Answer], Any]:
+    def _decide(self, request: Request) -> tuple[dict[str, Answer], Any, str]:
         body = self._body(request)
         try:
             response = self._client_().post(self.PATH, json=body, headers=self._headers)
@@ -100,8 +107,7 @@ class TypeSafeBackend(BaseBackend):
             ) from exc
         return self._handle_response(response, request)
 
-    async def adecide(self, request: Request) -> Response:
-        start = time.perf_counter()
+    async def _adecide(self, request: Request) -> tuple[dict[str, Answer], Any, str]:
         body = self._body(request)
         try:
             response = await self._aclient_().post(self.PATH, json=body, headers=self._headers)
@@ -109,14 +115,7 @@ class TypeSafeBackend(BaseBackend):
             raise BackendConnectionError(
                 self.name, f"could not reach {self.name}: {exc}", exc
             ) from exc
-        answers, raw = self._handle_response(response, request)
-        latency_ms = (time.perf_counter() - start) * 1000
-        return Response(
-            answers=answers,
-            meta=Meta(
-                backend=self.name, model=self.model, latency_ms=latency_ms, route=[], raw=raw
-            ),
-        )
+        return self._handle_response(response, request)
 
     def close(self) -> None:
         if self._client is not None:
