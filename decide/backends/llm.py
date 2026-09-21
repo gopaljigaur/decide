@@ -16,6 +16,7 @@ backends, never as ground truth on its own).
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import httpx
@@ -25,6 +26,8 @@ from decide.backends.base import BaseBackend, Capabilities
 from decide.errors import BadResponseError
 from decide.types import Answer, Choice, Noul, Request, Score, render_content
 from decide.wire import from_wire_answers
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You answer structured questions about a piece of state by \
 estimating probabilities.
@@ -111,10 +114,32 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
-def _to_wire_answers(data: dict[str, Any], request: Request) -> dict[str, Any]:
+def _unwrap_envelope(data: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap a `{"answers": {...}}` top-level envelope.
+
+    Some models echo TypeSafe's wire shape (`{"answers": {<question>: ...}}`)
+    instead of answering with the flat `{<question>: ...}` object the system
+    prompt asks for. When the parsed JSON has exactly one top-level key,
+    `"answers"`, whose value is itself an object, unwrap it once so that
+    shape is accepted too.
+    """
+    if set(data.keys()) == {"answers"} and isinstance(data["answers"], dict):
+        return data["answers"]
+    return data
+
+
+def _to_wire_answers(data: dict[str, Any], request: Request, backend_name: str) -> dict[str, Any]:
+    unknown = set(data) - set(request.questions)
+    if unknown:
+        logger.debug(
+            "llm backend: ignoring unknown top-level keys in model response: %s", sorted(unknown)
+        )
+
     wire: dict[str, Any] = {}
     for name, question in request.questions.items():
-        raw = data.get(name)
+        if name not in data:
+            raise BadResponseError(backend_name, f"model response is missing question {name!r}")
+        raw = data[name]
         raw = raw if isinstance(raw, dict) else {}
         if isinstance(question, Choice):
             candidates = list(question.criteria)
@@ -214,13 +239,18 @@ class LLMBackend(HttpClientMixin, BaseBackend):
             raise BadResponseError(
                 self.name, "response JSON is missing choices[0].message.content"
             ) from exc
+        if not isinstance(content, str):
+            raise BadResponseError(
+                self.name, "response JSON choices[0].message.content must be a string"
+            )
         try:
             model_json = json.loads(_strip_fences(content))
         except (ValueError, TypeError) as exc:
             raise BadResponseError(self.name, "model content was not valid JSON", exc) from exc
         if not isinstance(model_json, dict):
             raise BadResponseError(self.name, "model content must be a JSON object")
-        wire = _to_wire_answers(model_json, request)
+        model_json = _unwrap_envelope(model_json)
+        wire = _to_wire_answers(model_json, request, self.name)
         answers = from_wire_answers(wire, request)
         response_model = data.get("model")
         model = response_model if isinstance(response_model, str) and response_model else None

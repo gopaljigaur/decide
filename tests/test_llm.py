@@ -170,3 +170,101 @@ async def test_async_path():
 
 def test_capabilities_reports_not_local():
     assert LLMBackend(api_key="k").capabilities().local is False
+
+
+def test_missing_question_in_model_json_raises_bad_response():
+    # the model only answered 2 of the 3 questions ("refund" omitted); this
+    # must fail loudly rather than fabricate an answer for it.
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": {"probabilities": [1, 0]},
+        }
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
+def test_answers_envelope_is_unwrapped():
+    # some models echo TypeSafe's {"answers": {...}} envelope instead of the
+    # flat object the system prompt asks for; accept it too.
+    content = json.dumps(
+        {
+            "answers": {
+                "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+                "sev": {"probabilities": [1, 0]},
+                "refund": {"noul": 0.1},
+            }
+        }
+    )
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(REQ)
+    assert r.choices["team"].choice == "billing"
+    assert r.nouls["refund"].noul == 0.1
+
+
+def test_all_zero_probabilities_for_an_answered_question_falls_back_to_uniform():
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 0.0, "eng": 0.0}},
+            "sev": {"probabilities": [1, 0]},
+            "refund": {"noul": 0.1},
+        }
+    )
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(REQ)
+    assert r.choices["team"].probabilities == {"billing": 0.5, "eng": 0.5}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"choices": [{"message": {"role": "assistant", "content": 123}}]},  # non-string content
+        {"choices": []},  # empty choices
+        {"choices": [{}]},  # missing message
+        {},  # missing choices entirely
+    ],
+)
+def test_malformed_choices_shape_raises_bad_response(body):
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=body)),
+        ).decide(REQ)
+
+
+async def test_async_retries_once_without_response_format_on_400():
+    calls = []
+
+    def handler(r):
+        body = json.loads(r.content)
+        calls.append(body)
+        if "response_format" in body:
+            return httpx.Response(
+                400, json={"error": {"message": "Unrecognized request argument: response_format"}}
+            )
+        return httpx.Response(
+            200,
+            json=_chat(
+                json.dumps(
+                    {
+                        "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+                        "sev": {"probabilities": [1, 0]},
+                        "refund": {"noul": 0.1},
+                    }
+                )
+            ),
+        )
+
+    b = LLMBackend(api_key="k", transport=httpx.MockTransport(handler))
+    r = await b.adecide(REQ)
+    assert len(calls) == 2
+    assert "response_format" in calls[0] and "response_format" not in calls[1]
+    assert r.choices["team"].choice == "billing"
