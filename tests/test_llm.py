@@ -307,6 +307,101 @@ def test_malformed_score_answer_raises_bad_response(raw):
         ).decide(REQ)
 
 
+_GARBAGE_CHOICE_PROBABILITIES = [
+    "total garbage",  # not a mapping at all
+    {"billing": "high"},  # known candidate, but a non-numeric value
+    {},  # empty mapping
+    {"other": 0.9},  # numeric, but names no known candidate
+]
+
+_GARBAGE_SCORE_PROBABILITIES = [
+    "total garbage",  # not a list or mapping at all
+    {"0": "high", "1": "low"},  # known indices, but non-numeric values
+    [],  # empty list
+    {"7": 0.9, "8": 0.1},  # numeric, but names no known level index
+]
+
+
+@pytest.mark.parametrize("raw", _GARBAGE_CHOICE_PROBABILITIES)
+def test_garbage_choice_probabilities_raises_bad_response(raw):
+    content = json.dumps(
+        {
+            "team": {"probabilities": raw},
+            "sev": {"probabilities": [1, 0]},
+            "refund": {"noul": 0.1},
+        }
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
+@pytest.mark.parametrize("raw", _GARBAGE_SCORE_PROBABILITIES)
+def test_garbage_score_probabilities_raises_bad_response(raw):
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": {"probabilities": raw},
+            "refund": {"noul": 0.1},
+        }
+    )
+    with pytest.raises(BadResponseError):
+        LLMBackend(
+            api_key="k",
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+        ).decide(REQ)
+
+
+def test_choice_probabilities_with_integer_values_passes():
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1, "eng": 0}},
+            "sev": {"probabilities": [1, 0]},
+            "refund": {"noul": 1},
+        }
+    )
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(REQ)
+    assert r.choices["team"].choice == "billing"
+    assert r.nouls["refund"].noul == 1.0
+
+
+def test_score_probabilities_as_list_passes():
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": {"probabilities": [0.25, 0.75]},
+            "refund": {"noul": 0.1},
+        }
+    )
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(REQ)
+    assert r.scores["sev"].probabilities == [0.25, 0.75]
+
+
+def test_score_probabilities_as_index_keyed_mapping_passes_and_is_not_flattened_to_uniform():
+    # {"0": 1, "1": 0} is TypeSafe's index-keyed shape, not a list; it must be parsed
+    # into its own (skewed) distribution, not silently coerced into a uniform fallback.
+    content = json.dumps(
+        {
+            "team": {"probabilities": {"billing": 1.0, "eng": 0.0}},
+            "sev": {"probabilities": {"0": 1, "1": 0}},
+            "refund": {"noul": 0.1},
+        }
+    )
+    r = LLMBackend(
+        api_key="k",
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_chat(content))),
+    ).decide(REQ)
+    assert r.scores["sev"].probabilities == [1.0, 0.0]
+
+
 @pytest.mark.parametrize(
     "body",
     [

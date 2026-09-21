@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 import httpx
@@ -77,27 +78,81 @@ def build_prompt(request: Request) -> str:
 
 
 def _clamp01(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return 0.0
     return max(0.0, min(1.0, float(value)))
 
 
-def _normalised_choice_probs(raw: Any, candidates: list[str]) -> dict[str, float]:
-    """Clamp to [0, 1], drop unknown candidates, fill missing with 0.0, renormalise to sum 1."""
-    values = (
-        {c: _clamp01(raw.get(c, 0.0)) for c in candidates}
-        if isinstance(raw, dict)
-        else {c: 0.0 for c in candidates}
-    )
+def _is_numeric(value: Any) -> bool:
+    """True for a real, finite number: an `int`/`float`, never `bool`, never NaN/inf."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return False
+    return math.isfinite(value)
+
+
+def _normalised_choice_probs(
+    raw: Any, candidates: list[str], name: str, backend_name: str
+) -> dict[str, float]:
+    """Validate `raw`, then clamp to [0, 1], drop unknown candidates, fill missing with 0.0,
+    and renormalise to sum 1.
+
+    `raw` must be a non-empty mapping whose values are all numeric, naming at least one of
+    `candidates`; anything else (not a mapping, empty, a non-numeric value anywhere, or no
+    known candidate at all) is a malformed model response, not a low-confidence one, so it
+    raises `BadResponseError` rather than being silently coerced into a fabricated answer.
+    """
+    if not isinstance(raw, dict) or not raw:
+        raise BadResponseError(
+            backend_name, f"question {name!r} 'probabilities' must be a non-empty object"
+        )
+    if not all(_is_numeric(v) for v in raw.values()):
+        raise BadResponseError(
+            backend_name, f"question {name!r} 'probabilities' values must all be numeric"
+        )
+    if not any(c in raw for c in candidates):
+        raise BadResponseError(
+            backend_name, f"question {name!r} 'probabilities' does not name any candidate"
+        )
+    values = {c: _clamp01(raw.get(c, 0.0)) for c in candidates}
     total = sum(values.values())
     if total > 0:
         return {c: v / total for c, v in values.items()}
     return {c: 1.0 / len(candidates) for c in candidates}
 
 
-def _normalised_score_probs(raw: Any, n: int) -> dict[str, float]:
-    """Clamp a list of `n` probabilities to [0, 1], renormalise to sum 1, and index by string."""
-    values = [_clamp01(raw[i]) if isinstance(raw, list) and i < len(raw) else 0.0 for i in range(n)]
+def _score_values_by_index(raw: Any) -> dict[str, Any] | None:
+    """Normalise a raw Score `probabilities` value (a list, or an index-keyed mapping like
+    TypeSafe's `{"0": ..., "1": ...}`) into a `{"<index>": value}` mapping, or `None` if `raw`
+    is neither shape."""
+    if isinstance(raw, list):
+        return {str(i): v for i, v in enumerate(raw)}
+    if isinstance(raw, dict):
+        return raw
+    return None
+
+
+def _normalised_score_probs(raw: Any, n: int, name: str, backend_name: str) -> dict[str, float]:
+    """Validate `raw`, then clamp to [0, 1], renormalise to sum 1, and index by string.
+
+    `raw` must be a non-empty list or index-keyed mapping whose values are all numeric,
+    naming at least one of the `n` level indices; anything else is a malformed model
+    response and raises `BadResponseError` rather than being silently coerced (see
+    `_normalised_choice_probs`).
+    """
+    by_index = _score_values_by_index(raw)
+    if by_index is None or not by_index:
+        raise BadResponseError(
+            backend_name,
+            f"question {name!r} 'probabilities' must be a non-empty list or object",
+        )
+    if not all(_is_numeric(v) for v in by_index.values()):
+        raise BadResponseError(
+            backend_name, f"question {name!r} 'probabilities' values must all be numeric"
+        )
+    keys = [str(i) for i in range(n)]
+    if not any(k in by_index for k in keys):
+        raise BadResponseError(
+            backend_name, f"question {name!r} 'probabilities' does not name any level"
+        )
+    values = [_clamp01(by_index.get(k, 0.0)) for k in keys]
     total = sum(values)
     values = [v / total for v in values] if total > 0 else [1.0 / n] * n
     return {str(i): v for i, v in enumerate(values)}
@@ -157,7 +212,9 @@ def _to_wire_answers(data: dict[str, Any], request: Request, backend_name: str) 
             candidates = list(question.criteria)
             wire[name] = {
                 "type": "choice",
-                "probabilities": _normalised_choice_probs(raw["probabilities"], candidates),
+                "probabilities": _normalised_choice_probs(
+                    raw["probabilities"], candidates, name, backend_name
+                ),
             }
         elif isinstance(question, Score):
             if "probabilities" not in raw:
@@ -167,7 +224,7 @@ def _to_wire_answers(data: dict[str, Any], request: Request, backend_name: str) 
             wire[name] = {
                 "type": "score",
                 "probabilities": _normalised_score_probs(
-                    raw["probabilities"], len(question.criteria)
+                    raw["probabilities"], len(question.criteria), name, backend_name
                 ),
             }
         elif isinstance(question, Noul):
