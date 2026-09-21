@@ -62,6 +62,30 @@ def test_from_wire_answers_parses_all_types_and_fills_gaps():
 def test_from_wire_answers_rejects_missing_and_unknown():
     with pytest.raises(BadResponseError):
         from_wire_answers({"team": {"type": "choice", "probabilities": {"billing": 1.0}}}, REQ)
+
+
+def test_from_wire_answers_empty_choice_probabilities_raises_bad_response():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {}},
+                "sev": {"type": "score", "probabilities": {"0": 0.25, "1": 0.75}},
+                "refund": {"type": "noul", "noul": 0.9},
+            },
+            REQ,
+        )
+
+
+def test_from_wire_answers_empty_score_probabilities_raises_bad_response():
+    with pytest.raises(BadResponseError):
+        from_wire_answers(
+            {
+                "team": {"type": "choice", "probabilities": {"billing": 0.8, "eng": 0.2}},
+                "sev": {"type": "score", "probabilities": {}},
+                "refund": {"type": "noul", "noul": 0.9},
+            },
+            REQ,
+        )
     with pytest.raises(BadResponseError):
         from_wire_answers(
             {

@@ -31,6 +31,11 @@ def test_per_question_override_wins():
     assert not g.passes(_resp(c=ChoiceAnswer("a", {"a": 0.6, "b": 0.4}), n=NoulAnswer(0.5)))[0]
 
 
+def test_confidence_defaults_to_zero_for_empty_choice_probabilities():
+    r = _resp(c=ChoiceAnswer("a", {}))
+    assert Gate().confidence(r) == {"c": 0.0}
+
+
 def test_scores_are_not_gated():
     result = Gate(min_confidence=0.99).passes(_resp(s=ScoreAnswer(0.5, [0.5, 0.5], ["x", "y"])))
     assert result == (True, "ok")

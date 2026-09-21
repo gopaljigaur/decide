@@ -57,6 +57,32 @@ def test_error_falls_through_to_next():
     assert r.meta.route == ["a:error", "b:ok"] and r.meta.backend == "b"
 
 
+def test_bad_response_from_empty_probabilities_falls_through_to_next():
+    from decide.backends.laya import LayaBackend
+
+    class _EmptyProbsAgent:
+        def predict(self, state, questions):
+            return {"answers": {"team": {"type": "choice", "probabilities": {}}}}
+
+    class _OkAgent:
+        def predict(self, state, questions):
+            return {
+                "answers": {
+                    "team": {"type": "choice", "probabilities": {"billing": 0.9, "eng": 0.1}}
+                }
+            }
+
+    class _BackendA(LayaBackend):
+        name = "a"
+
+    class _BackendB(LayaBackend):
+        name = "b"
+
+    c = Client([_BackendA(agent=_EmptyProbsAgent()), _BackendB(agent=_OkAgent())])
+    r = c.decide("s", {"team": Q["team"]})
+    assert r.meta.route == ["a:error", "b:ok"] and r.meta.backend == "b"
+
+
 def test_on_error_raise():
     c = Client(
         [FakeBackend("a", fail=BackendError("a", "boom")), FakeBackend("b")],

@@ -225,6 +225,10 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     message=f"question '{name}' expected type 'choice', got {atype!r}",
                 )
             probs = _numeric_mapping(_get_field(a, "probabilities", name), name, "probabilities")
+            if not probs:
+                raise BadResponseError(
+                    backend="wire", message=f"question '{name}' probabilities must not be empty"
+                )
             choice = a.get("choice")
             if choice is None:
                 choice = max(probs, key=probs.get)
@@ -241,8 +245,13 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' expected type 'score', got {atype!r}",
                 )
+            raw_probs = _get_field(a, "probabilities", name)
+            if isinstance(raw_probs, Mapping) and not raw_probs:
+                raise BadResponseError(
+                    backend="wire", message=f"question '{name}' probabilities must not be empty"
+                )
             probs = _indexed_numeric_mapping(
-                _get_field(a, "probabilities", name), name, "probabilities", len(question.criteria)
+                raw_probs, name, "probabilities", len(question.criteria)
             )
             score = a.get("score")
             if score is None:

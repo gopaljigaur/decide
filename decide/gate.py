@@ -23,7 +23,7 @@ class Gate:
         result = {}
         for name, answer in response.answers.items():
             if isinstance(answer, ChoiceAnswer):
-                result[name] = max(answer.probabilities.values())
+                result[name] = max(answer.probabilities.values(), default=0.0)
             elif isinstance(answer, NoulAnswer):
                 result[name] = max(answer.noul, 1 - answer.noul)
             # ScoreAnswer is skipped (not gated)
