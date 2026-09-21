@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from decide.backends import available
 from decide.backends import load as load_backend
 from decide.backends.base import Backend
 from decide.errors import AllBackendsFailed, BackendError, ConfigError
@@ -11,6 +12,15 @@ from decide.gate import Gate
 from decide.types import Content, Question, Request, Response
 
 _LAYA_MODEL_ENV = "DECIDE_LOCAL_MODEL"
+
+# Backends that `_kwargs_for` cannot build from environment variables, with the
+# reason to show instead of the generic "unknown backend" message.
+_ENV_UNSUPPORTED_BACKENDS: dict[str, str] = {
+    "crossencoder": (
+        "cannot be configured from the environment; construct it directly "
+        "and pass it to Client([...])"
+    ),
+}
 
 
 def _decision(
@@ -54,6 +64,80 @@ def _finish(
     raise AllBackendsFailed(list(route), errors)
 
 
+def _apply_decisions(
+    backend: Backend,
+    pending: Sequence[int],
+    sub_responses: Sequence[Response | None],
+    sub_errors: Sequence[BackendError | None],
+    policy: Gate,
+    routes: list[list[str]],
+    errors_by_state: list[list[BackendError]],
+    bests: list[tuple[float, Response, str] | None],
+    results: list[Response | None],
+) -> list[int]:
+    """Apply one backend's outcomes for a batch round to the running per-state state.
+
+    `pending` and `sub_responses`/`sub_errors` are parallel: `pending[i]` is
+    the input index that `sub_responses[i]`/`sub_errors[i]` belongs to.
+    `pending` may be a prefix of the round's original pending indices (a
+    non-batching send loop with `policy.on_error == "raise"` stops sending
+    once it hits an error, so only that prefix has answers to apply).
+
+    Mutates `routes`, `errors_by_state`, `bests` and `results` in place for
+    every index in `pending`. Returns the input indices that are still
+    pending after this backend (gate did not pass and there was no error).
+    Raises the first `BackendError` immediately when `policy.on_error ==
+    "raise"`, matching `Client._run_chain`/`AsyncClient._run_chain`.
+    """
+    still_pending: list[int] = []
+    for idx, resp, err in zip(pending, sub_responses, sub_errors, strict=True):
+        result, bests[idx] = _decision(
+            backend, resp, err, policy, routes[idx], errors_by_state[idx], bests[idx]
+        )
+        if err is not None and policy.on_error == "raise":
+            raise err
+        if result is not None:
+            results[idx] = result
+        else:
+            still_pending.append(idx)
+    return still_pending
+
+
+def _finish_batch(
+    pending: Sequence[int],
+    routes: list[list[str]],
+    errors_by_state: list[list[BackendError]],
+    bests: list[tuple[float, Response, str] | None],
+    results: list[Response | None],
+) -> list[Response]:
+    """Resolve every state still pending once all backends have run.
+
+    A pending state with a recorded `best` (some backend produced a response
+    that just missed the confidence gate) resolves via `_finish`
+    (`accepted_low_confidence`). A pending state with no `best` at all
+    (every backend errored, none produced any response) is unroutable.
+
+    If any state is unroutable, raises `AllBackendsFailed` with `partial`
+    (every state that did resolve, keyed by input index) and `failed` (the
+    route so far for every unroutable state, keyed by input index) so a
+    caller can recover the completed siblings instead of losing them.
+    """
+    unroutable: dict[int, list[str]] = {}
+    for idx in pending:
+        if bests[idx] is None:
+            unroutable[idx] = list(routes[idx])
+            continue
+        results[idx] = _finish(routes[idx], errors_by_state[idx], bests[idx])
+
+    if unroutable:
+        partial = {i: r for i, r in enumerate(results) if r is not None}
+        route = [step for idx in unroutable for step in unroutable[idx]]
+        errors = [err for idx in unroutable for err in errors_by_state[idx]]
+        raise AllBackendsFailed(route, errors, partial=partial, failed=unroutable)
+
+    return [r for r in results if r is not None]
+
+
 class Client:
     def __init__(self, backends: Sequence[Backend], policy: Gate | None = None) -> None:
         self.backends = list(backends)
@@ -89,6 +173,19 @@ class Client:
         *,
         model: str | None = None,
     ) -> list[Response]:
+        """Run the fallback chain over each state, preserving input order.
+
+        Runs each backend over the whole remaining sub-batch: uses
+        `backend.decide_batch` when `capabilities().batch` is true, else
+        loops `decide` per request (stopping early if `policy.on_error ==
+        "raise"` hits an error). The gate is applied per state; states that
+        fail move to the next backend. On success, returns one `Response`
+        per input state, in input order, each carrying its own route.
+
+        If any state cannot be resolved by any backend, raises
+        `AllBackendsFailed` instead of returning partial results silently;
+        see its docstring for `partial`/`failed`.
+        """
         requests = [Request(state=s, questions=questions, model=model) for s in states]
         n = len(requests)
         results: list[Response | None] = [None] * n
@@ -110,6 +207,7 @@ class Client:
                 except BackendError as exc:
                     sub_responses = [None] * len(sub_requests)
                     sub_errors = [exc] * len(sub_requests)
+                round_pending = pending
             else:
                 sub_responses = []
                 sub_errors = []
@@ -120,24 +218,23 @@ class Client:
                     except BackendError as exc:
                         sub_responses.append(None)
                         sub_errors.append(exc)
+                        if self.policy.on_error == "raise":
+                            break
+                round_pending = pending[: len(sub_responses)]
 
-            still_pending = []
-            for idx, resp, err in zip(pending, sub_responses, sub_errors, strict=True):
-                result, bests[idx] = _decision(
-                    backend, resp, err, self.policy, routes[idx], errors_by_state[idx], bests[idx]
-                )
-                if err is not None and self.policy.on_error == "raise":
-                    raise err
-                if result is not None:
-                    results[idx] = result
-                else:
-                    still_pending.append(idx)
-            pending = still_pending
+            pending = _apply_decisions(
+                backend,
+                round_pending,
+                sub_responses,
+                sub_errors,
+                self.policy,
+                routes,
+                errors_by_state,
+                bests,
+                results,
+            )
 
-        for idx in pending:
-            results[idx] = _finish(routes[idx], errors_by_state[idx], bests[idx])
-
-        return [r for r in results if r is not None]
+        return _finish_batch(pending, routes, errors_by_state, bests, results)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None, policy: Gate | None = None) -> Client:
@@ -194,6 +291,19 @@ class AsyncClient:
         *,
         model: str | None = None,
     ) -> list[Response]:
+        """Run the fallback chain over each state concurrently, preserving input order.
+
+        Runs each backend over the whole remaining sub-batch by calling
+        `adecide` per request concurrently with `asyncio.gather` (backends
+        have no async batch path in v1). The gate is applied per state;
+        states that fail move to the next backend. On success, returns one
+        `Response` per input state, in input order, each carrying its own
+        route.
+
+        If any state cannot be resolved by any backend, raises
+        `AllBackendsFailed` instead of returning partial results silently;
+        see its docstring for `partial`/`failed`.
+        """
         requests = [Request(state=s, questions=questions, model=model) for s in states]
         n = len(requests)
         results: list[Response | None] = [None] * n
@@ -216,24 +326,22 @@ class AsyncClient:
                     return None, exc
 
             outcomes = await asyncio.gather(*(_run_one(req) for req in sub_requests))
+            sub_responses = [resp for resp, _ in outcomes]
+            sub_errors = [err for _, err in outcomes]
 
-            still_pending = []
-            for idx, (resp, err) in zip(pending, outcomes, strict=True):
-                result, bests[idx] = _decision(
-                    backend, resp, err, self.policy, routes[idx], errors_by_state[idx], bests[idx]
-                )
-                if err is not None and self.policy.on_error == "raise":
-                    raise err
-                if result is not None:
-                    results[idx] = result
-                else:
-                    still_pending.append(idx)
-            pending = still_pending
+            pending = _apply_decisions(
+                backend,
+                pending,
+                sub_responses,
+                sub_errors,
+                self.policy,
+                routes,
+                errors_by_state,
+                bests,
+                results,
+            )
 
-        for idx in pending:
-            results[idx] = _finish(routes[idx], errors_by_state[idx], bests[idx])
-
-        return [r for r in results if r is not None]
+        return _finish_batch(pending, routes, errors_by_state, bests, results)
 
     @classmethod
     def from_env(
@@ -265,7 +373,13 @@ def _policy_from_env(env: Mapping[str, str] | None) -> Gate:
     env = env or {}
     min_confidence = env.get("DECIDE_MIN_CONFIDENCE")
     if min_confidence is not None:
-        return Gate(min_confidence=float(min_confidence))
+        try:
+            value = float(min_confidence)
+        except ValueError as exc:
+            raise ConfigError(
+                f"invalid DECIDE_MIN_CONFIDENCE {min_confidence!r}: must be a float"
+            ) from exc
+        return Gate(min_confidence=value)
     return Gate()
 
 
@@ -293,6 +407,8 @@ def _kwargs_for(name: str, env: Mapping[str, str]) -> dict[str, Any]:
         if _LAYA_MODEL_ENV not in env:
             raise ConfigError(f"missing {_LAYA_MODEL_ENV} for backend {name!r}")
         return {"model": env[_LAYA_MODEL_ENV]}
+    if name in _ENV_UNSUPPORTED_BACKENDS:
+        raise ConfigError(f"backend {name!r} {_ENV_UNSUPPORTED_BACKENDS[name]}")
     raise ConfigError(f"unknown backend {name!r}")
 
 
@@ -302,12 +418,10 @@ def _resolve_env_backends(
     env = env or {}
 
     explicit = env.get("DECIDE_BACKENDS")
-    if explicit is not None:
+    if explicit is not None and explicit.strip():
         names = [n.strip() for n in explicit.split(",") if n.strip()]
         kwargs_by_name = {name: _kwargs_for(name, env) for name in names}
         return names, kwargs_by_name
-
-    from decide.backends import available
 
     availability = available()
 
