@@ -426,6 +426,14 @@ def _kwargs_for(name: str, env: Mapping[str, str]) -> dict[str, Any]:
     raise ConfigError(f"unknown backend {name!r}")
 
 
+def _auto_local_kwargs(env: Mapping[str, str]) -> dict[str, Any]:
+    """kwargs for auto-detected `laya`/`laya_mlx`: `model=` only when `DECIDE_LOCAL_MODEL` is
+    set, so the backend's own constructor default applies otherwise."""
+    if _LAYA_MODEL_ENV in env:
+        return {"model": env[_LAYA_MODEL_ENV]}
+    return {}
+
+
 def _resolve_env_backends(
     env: Mapping[str, str] | None,
 ) -> tuple[list[str], dict[str, dict[str, Any]]]:
@@ -448,13 +456,12 @@ def _resolve_env_backends(
     names = []
     kwargs_by_name = {}
 
-    if _LAYA_MODEL_ENV in env:
-        if availability.get("laya_mlx"):
-            names.append("laya_mlx")
-            kwargs_by_name["laya_mlx"] = _kwargs_for("laya_mlx", env)
-        elif availability.get("laya"):
-            names.append("laya")
-            kwargs_by_name["laya"] = _kwargs_for("laya", env)
+    if availability.get("laya_mlx"):
+        names.append("laya_mlx")
+        kwargs_by_name["laya_mlx"] = _auto_local_kwargs(env)
+    elif availability.get("laya"):
+        names.append("laya")
+        kwargs_by_name["laya"] = _auto_local_kwargs(env)
 
     if "TYPESAFE_API_KEY" in env:
         names.append("typesafe")
@@ -471,7 +478,10 @@ def _resolve_env_backends(
     if not names:
         raise ConfigError(
             "no backend configured; checked DECIDE_LOCAL_MODEL, TYPESAFE_API_KEY, "
-            "OPENROUTER_API_KEY, DECIDE_LLM_BASE_URL, OPENAI_API_KEY"
+            "OPENROUTER_API_KEY, DECIDE_LLM_BASE_URL, OPENAI_API_KEY\n"
+            'Install a local model backend: uv tool install "pydecide[mlx]"  (Apple Silicon) '
+            'or "pydecide[laya]"\n'
+            "or set TYPESAFE_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY for a hosted one."
         )
 
     return names, kwargs_by_name
