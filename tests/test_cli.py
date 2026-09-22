@@ -484,6 +484,56 @@ def test_serve_falls_back_to_env_api_key_when_flag_absent(monkeypatch):
     assert captured["api_key"] == "ENV_TOKEN"
 
 
+# --- HF_HUB_DISABLE_PROGRESS_BARS ------------------------------------------------------
+
+
+def test_ask_sets_hf_hub_disable_progress_bars_when_unset(monkeypatch):
+    monkeypatch.delenv("HF_HUB_DISABLE_PROGRESS_BARS", raising=False)
+    _patch_make_client(monkeypatch, Client([FakeBackend("fake")]))
+
+    cli.main(["ask", "x", "--choice", "team=billing,eng"])
+
+    assert os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] == "1"
+
+
+def test_ask_leaves_existing_hf_hub_disable_progress_bars_untouched(monkeypatch):
+    monkeypatch.setenv("HF_HUB_DISABLE_PROGRESS_BARS", "0")
+    _patch_make_client(monkeypatch, Client([FakeBackend("fake")]))
+
+    cli.main(["ask", "x", "--choice", "team=billing,eng"])
+
+    assert os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] == "0"
+
+
+def test_ask_verbose_does_not_set_hf_hub_disable_progress_bars(monkeypatch):
+    monkeypatch.delenv("HF_HUB_DISABLE_PROGRESS_BARS", raising=False)
+    _patch_make_client(monkeypatch, Client([FakeBackend("fake")]))
+
+    cli.main(["ask", "x", "--choice", "team=billing,eng", "--verbose"])
+
+    assert "HF_HUB_DISABLE_PROGRESS_BARS" not in os.environ
+
+
+def test_serve_sets_hf_hub_disable_progress_bars_when_unset(monkeypatch):
+    monkeypatch.delenv("HF_HUB_DISABLE_PROGRESS_BARS", raising=False)
+    monkeypatch.setattr(cli, "make_client", lambda env, policy: Client([FakeBackend()]))
+    monkeypatch.setattr(cli, "run_server", lambda app, host, port: None)
+
+    cli.main(["serve"])
+
+    assert os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] == "1"
+
+
+def test_serve_verbose_does_not_set_hf_hub_disable_progress_bars(monkeypatch):
+    monkeypatch.delenv("HF_HUB_DISABLE_PROGRESS_BARS", raising=False)
+    monkeypatch.setattr(cli, "make_client", lambda env, policy: Client([FakeBackend()]))
+    monkeypatch.setattr(cli, "run_server", lambda app, host, port: None)
+
+    cli.main(["serve", "--verbose"])
+
+    assert "HF_HUB_DISABLE_PROGRESS_BARS" not in os.environ
+
+
 def test_no_command_is_usage_error(capsys):
     code = cli.main([])
 
