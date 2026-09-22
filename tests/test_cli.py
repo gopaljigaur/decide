@@ -382,6 +382,36 @@ def test_backend_status_uses_given_env_mapping():
     assert row_by_name["crossencoder"][1] == "n/a"
 
 
+def test_backend_status_local_backend_default_when_installed_and_no_override(monkeypatch):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, True))
+
+    rows = cli._backend_status({})
+
+    row_by_name = {name: configured for name, _installed, configured, _hint in rows}
+    assert row_by_name["laya"] == "default"
+    assert row_by_name["laya_mlx"] == "default"
+
+
+def test_backend_status_local_backend_yes_when_decide_local_model_set(monkeypatch):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, True))
+
+    rows = cli._backend_status({"DECIDE_LOCAL_MODEL": "m1"})
+
+    row_by_name = {name: configured for name, _installed, configured, _hint in rows}
+    assert row_by_name["laya"] == "yes"
+    assert row_by_name["laya_mlx"] == "yes"
+
+
+def test_backend_status_local_backend_no_when_not_installed(monkeypatch):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, False))
+
+    rows = cli._backend_status({"DECIDE_LOCAL_MODEL": "m1"})
+
+    row_by_name = {name: configured for name, _installed, configured, _hint in rows}
+    assert row_by_name["laya"] == "no"
+    assert row_by_name["laya_mlx"] == "no"
+
+
 def test_serve_calls_run_server_seam(monkeypatch):
     captured = {}
 

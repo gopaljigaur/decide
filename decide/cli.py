@@ -272,10 +272,16 @@ def _install_hint(name: str) -> str:
     return f'pip install "{extra}"' if extra else ""
 
 
+_LOCAL_BACKENDS = ("laya", "laya_mlx")
+
+
 def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str, str]]:
     """Report `(name, installed, configured, install_hint)` for every registered backend.
 
     `install_hint` is the install command for a backend that isn't installed, "" otherwise.
+    For `laya`/`laya_mlx`, `configured` is `"no"` when not installed, `"default"` when
+    installed with no `DECIDE_LOCAL_MODEL` override (it will be used with its own default
+    model), and `"yes"` when `DECIDE_LOCAL_MODEL` is set.
     """
     installed_by_name = available()
     rows = []
@@ -284,6 +290,13 @@ def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str, str]]:
         env_vars = _ENV_VARS.get(name)
         if env_vars is None:
             configured = "n/a"
+        elif name in _LOCAL_BACKENDS:
+            if not installed:
+                configured = "no"
+            elif any(v in env for v in env_vars):
+                configured = "yes"
+            else:
+                configured = "default"
         else:
             configured = "yes" if any(v in env for v in env_vars) else "no"
         install_hint = "" if installed else _install_hint(name)
