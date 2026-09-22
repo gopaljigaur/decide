@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.2 (2026-09-22)
+
+- `Client.from_env`/`AsyncClient.from_env` now auto-select an installed
+  local backend (`laya_mlx` or `laya`) with zero configuration: no
+  environment variable is required, and `DECIDE_LOCAL_MODEL` becomes an
+  optional override of the backend's own default model instead of a
+  requirement to opt in. A local backend, when importable, is tried before
+  the hosted backends as a fallback chain; `decide backends` reports its
+  `CONFIGURED` column as `default` in this state.
+- The `ConfigError` raised when nothing is configured now ends with
+  concrete next steps: which extra to install for a local backend, or which
+  environment variable to set for a hosted one.
+
 ## 0.1.1 (2026-09-22)
 
 - `decide ask` question names are now optional: an unnamed `--choice`,
