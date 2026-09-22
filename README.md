@@ -15,18 +15,29 @@ protocol, so existing TypeSafe clients can point at a local model instead.
 ## Install
 
 ```bash
-pip install pydecide
+uv tool install pydecide   # the decide CLI on your PATH, from any directory
+uv add pydecide            # inside a project
 ```
 
-Local model backends and the server are optional extras:
+With pip: `pip install pydecide` / `pipx install pydecide`. Either way, this
+includes the CLI, the hosted backends and the server.
+
+Local model backends need an extra:
 
 ```bash
-pip install "pydecide[server]"   # decide serve (FastAPI + uvicorn)
-pip install "pydecide[laya]"     # laya backend (PyTorch)
-pip install "pydecide[mlx]"      # laya_mlx backend (Apple Silicon; needs Python 3.11+)
-pip install "pydecide[st]"       # crossencoder backend (sentence-transformers)
-pip install "pydecide[all]"      # everything above
+uv tool install "pydecide[all]"
 ```
+
+With pip: `pip install "pydecide[all]"`. Quote the brackets in zsh, since it
+otherwise tries to glob them. This pulls in PyTorch and MLX, about 2 GB.
+
+| Extra | Adds |
+|---|---|
+| `server` | Nothing further; kept as an empty extra so `pip install "pydecide[server]"` still works. FastAPI and uvicorn ship in the base install. |
+| `laya` | `laya` backend (PyTorch) |
+| `mlx` | `laya_mlx` backend (Apple Silicon; needs Python 3.11+) |
+| `st` | `crossencoder` backend (sentence-transformers) |
+| `all` | `laya` + `mlx` + `st` |
 
 The `mlx` extra depends on `laya-mlx`, which requires Python 3.11 or newer;
 on 3.10 the extra installs nothing and the `laya_mlx` backend is
@@ -186,10 +197,7 @@ did not), so the resolved siblings are not silently lost.
 
 ## Server: point TypeSafe's SDK at a local model
 
-Requires the `server` extra:
-
 ```bash
-pip install "pydecide[server]"
 DECIDE_LOCAL_MODEL=aac6fef/laya-multilingual-mlx decide serve --backends laya_mlx --port 8811
 ```
 
@@ -279,6 +287,26 @@ genuine `SystemOneResponse`, not a hand-shaped dict.
 
 ## CLI
 
+`--choice`, `--score` and `--noul` question names are optional. An unnamed
+flag is auto-named after the flag itself (`choice`, `score`, `noul`); a
+second unnamed flag of the same type becomes `choice2`, `score2`, `noul2`,
+and so on:
+
+```bash
+decide ask "I had a rough day" --noul "Is the writer doing well?" --choice good,bad
+```
+
+```text
+NAME    TYPE    ANSWER  PROBABILITIES
+choice  choice  bad     good=0.07 bad=0.93
+noul    noul    false   0.02
+backend=laya_mlx route=laya_mlx:ok latency=65.3ms
+```
+
+Name a question explicitly with `NAME=...` to control what shows up in the
+table and in `--json`; named and unnamed questions can be mixed on the same
+command line:
+
 ```bash
 decide ask "I was charged twice, please refund." \
   --choice "team=billing,engineering,sales" \
@@ -291,7 +319,7 @@ NAME      TYPE    ANSWER    PROBABILITIES
 team      choice  billing   billing=0.93 engineering=0.02 sales=0.05
 severity  score   degraded  1.09 (degraded)
 refund    noul    true      0.87
-backend=laya_mlx route=laya_mlx:ok latency=36.9ms
+backend=laya_mlx route=laya_mlx:ok latency=34.8ms
 ```
 
 `--json` prints a machine-readable payload instead of the table.
@@ -302,13 +330,17 @@ decide backends
 ```
 
 ```text
-typesafe  installed=yes  configured=no
-openrouter  installed=yes  configured=no
-laya  installed=yes  configured=yes
-laya_mlx  installed=yes  configured=yes
-crossencoder  installed=yes  configured=n/a
-llm  installed=yes  configured=no
+NAME          INSTALLED  CONFIGURED  INSTALL
+typesafe      yes        no
+openrouter    yes        no
+laya          yes        no
+laya_mlx      yes        no
+crossencoder  yes        n/a
+llm           yes        no
 ```
+
+Every backend with `INSTALLED` `no` gets an `INSTALL` column naming the
+exact command to add it, e.g. `pip install "pydecide[laya]"`.
 
 `decide serve --backends a,b --host 127.0.0.1 --port 8811 [--api-key TOKEN] [--min-confidence FLOAT]`
 runs the HTTP server described above.
@@ -332,7 +364,7 @@ accordingly - as a signal to gate and fall back on, not as ground truth.
 
 ## Status
 
-`pydecide` is at 0.1.0. The public API may still change before a 1.0
+`pydecide` is at 0.1.1. The public API may still change before a 1.0
 release.
 
 ## License

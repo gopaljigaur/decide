@@ -1,6 +1,6 @@
 [project]
 name = "pydecide"
-version = "0.1.0"
+version = "0.1.1"
 description = "One client for every decision model: Choice, Score and Noul over Jev, OpenRouter, laya, MLX, CrossEncoders and an LLM fallback."
 readme = "README.md"
 license = "MIT"
@@ -17,14 +17,14 @@ classifiers = [
   "Operating System :: OS Independent",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["httpx>=0.27"]
+dependencies = ["httpx>=0.27", "fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.optional-dependencies]
-server = ["fastapi>=0.110", "uvicorn>=0.29"]
+server = []
 laya = ["laya>=0.3"]
 mlx = ["laya-mlx>=0.1 ; python_version >= '3.11'"]
 st = ["sentence-transformers>=3.0", "torch"]
-all = ["pydecide[server,laya,mlx,st]"]
+all = ["pydecide[laya,mlx,st]"]
 
 [project.scripts]
 decide = "decide.cli:main"

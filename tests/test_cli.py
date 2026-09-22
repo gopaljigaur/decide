@@ -68,12 +68,135 @@ def test_ask_requires_at_least_one_question(monkeypatch, capsys):
     assert err.strip() != ""
 
 
-def test_ask_choice_flag_without_equals_is_usage_error(capsys):
+def test_ask_choice_flag_without_equals_is_unnamed_single_candidate(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
     code = cli.main(["ask", "x", "--choice", "team-no-equals"])
+
+    assert code == 0
+    assert set(captured["questions"]) == {"choice"}
+    assert list(captured["questions"]["choice"].criteria) == ["team-no-equals"]
+
+
+def test_ask_unnamed_choice_is_named_choice(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--choice", "good,bad"])
+
+    assert set(captured["questions"]) == {"choice"}
+    assert set(captured["questions"]["choice"].criteria) == {"good", "bad"}
+
+
+def test_ask_unnamed_score_is_named_score(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--score", "lo,mid,hi"])
+
+    assert set(captured["questions"]) == {"score"}
+    assert list(captured["questions"]["score"].criteria) == ["lo", "mid", "hi"]
+
+
+def test_ask_unnamed_noul_is_named_noul(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--noul", "Is the writer doing well?"])
+
+    assert set(captured["questions"]) == {"noul"}
+    assert captured["questions"]["noul"].instructions == "Is the writer doing well?"
+
+
+def test_ask_two_unnamed_nouls_get_noul_and_noul2(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(
+        [
+            "ask",
+            "x",
+            "--noul",
+            "Is the writer doing well?",
+            "--noul",
+            "Did they ask for a refund?",
+        ]
+    )
+
+    assert set(captured["questions"]) == {"noul", "noul2"}
+    assert captured["questions"]["noul"].instructions == "Is the writer doing well?"
+    assert captured["questions"]["noul2"].instructions == "Did they ask for a refund?"
+
+
+def test_ask_mixed_named_and_unnamed_questions(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--choice", "team=billing,eng", "--noul", "Is the writer doing well?"])
+
+    assert set(captured["questions"]) == {"team", "noul"}
+    assert captured["questions"]["noul"].instructions == "Is the writer doing well?"
+
+
+def test_ask_noul_text_with_equals_and_spaces_is_unnamed(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--noul", "Is the writer = doing well?"])
+
+    assert set(captured["questions"]) == {"noul"}
+    assert captured["questions"]["noul"].instructions == "Is the writer = doing well?"
+
+
+def test_ask_duplicate_explicit_names_is_usage_error(capsys):
+    code = cli.main(["ask", "x", "--choice", "team=billing,eng", "--score", "team=lo,mid,hi"])
 
     assert code == 2
     err = capsys.readouterr().err
-    assert err.strip() != ""
+    assert "team" in err
 
 
 def test_ask_instructions_default_used_for_choice_and_score(monkeypatch):
@@ -168,7 +291,7 @@ def test_backends_lists_registry_names(capsys):
     out = capsys.readouterr().out
     assert "typesafe" in out
     assert "llm" in out
-    assert "NAME" in out and "INSTALLED" in out and "CONFIGURED" in out
+    assert "NAME" in out and "INSTALLED" in out and "CONFIGURED" in out and "INSTALL" in out
 
 
 def test_backends_crossencoder_is_configured_n_a(capsys):
@@ -189,11 +312,50 @@ def test_backends_output_is_padded_and_aligned_with_no_trailing_whitespace(capsy
         assert line == line.rstrip(), f"line has trailing whitespace: {line!r}"
 
     rows = cli._backend_status(os.environ)
-    name_width = max(len("NAME"), *(len(name) for name, _, _ in rows))
+    name_width = max(len("NAME"), *(len(name) for name, _, _, _ in rows))
     header, *data_rows = lines
     assert header.startswith("NAME".ljust(name_width) + "  ")
-    for line, (name, _installed, _configured) in zip(data_rows, rows, strict=True):
+    for line, (name, _installed, _configured, _hint) in zip(data_rows, rows, strict=True):
         assert line.startswith(name.ljust(name_width) + "  ")
+
+
+def test_install_hint_for_extra_backed_backend():
+    assert cli._install_hint("laya") == 'pip install "pydecide[laya]"'
+    assert cli._install_hint("laya_mlx") == 'pip install "pydecide[mlx]"'
+    assert cli._install_hint("crossencoder") == 'pip install "pydecide[st]"'
+
+
+def test_install_hint_for_http_backend_is_empty():
+    assert cli._install_hint("typesafe") == ""
+    assert cli._install_hint("openrouter") == ""
+    assert cli._install_hint("llm") == ""
+
+
+def test_backends_appends_install_hint_for_not_installed_backends(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, False))
+
+    code = cli.main(["backends"])
+
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    rows = {line.split()[0]: line for line in lines[1:]}
+    assert 'pip install "pydecide[laya]"' in rows["laya"]
+    assert 'pip install "pydecide[mlx]"' in rows["laya_mlx"]
+    assert 'pip install "pydecide[st]"' in rows["crossencoder"]
+    assert "pip install" not in rows["typesafe"]
+    assert "pip install" not in rows["openrouter"]
+    assert "pip install" not in rows["llm"]
+
+
+def test_backends_omits_install_hint_for_installed_backends(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, True))
+
+    code = cli.main(["backends"])
+
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    for line in lines[1:]:
+        assert "pip install" not in line
 
 
 def test_ask_table_rows_have_no_trailing_whitespace(monkeypatch, capsys):
@@ -211,7 +373,9 @@ def test_ask_table_rows_have_no_trailing_whitespace(monkeypatch, capsys):
 
 def test_backend_status_uses_given_env_mapping():
     rows = cli._backend_status({"TYPESAFE_API_KEY": "secret"})
-    row_by_name = {name: (installed, configured) for name, installed, configured in rows}
+    row_by_name = {
+        name: (installed, configured, hint) for name, installed, configured, hint in rows
+    }
 
     assert row_by_name["typesafe"][1] == "yes"
     assert row_by_name["openrouter"][1] == "no"

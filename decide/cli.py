@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 
-from decide.backends import REGISTRY, available
+from decide.backends import _EXTRAS, REGISTRY, available
 from decide.client import Client
 from decide.errors import ConfigError, DecideError
 from decide.gate import Gate
@@ -58,14 +59,45 @@ def run_server(app: object, host: str, port: int) -> None:
     uvicorn.run(app, host=host, port=port)
 
 
-def _parse_name_value(raw: str) -> tuple[str, str]:
+_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _split_name(raw: str, *, list_valued: bool) -> tuple[str | None, str]:
+    """Split a `--choice`/`--score`/`--noul` value into an optional explicit name and text.
+
+    The part before the first `=` counts as an explicit name only if it looks like an
+    identifier (letters, digits, `_`, `-`, no spaces) and, depending on `list_valued`,
+    the remainder contains a comma (`--choice`/`--score`) or is non-empty (`--noul`).
+    Otherwise the whole string is unnamed text (this is what lets `--noul` text contain
+    a literal `=`).
+    """
     if "=" not in raw:
-        raise argparse.ArgumentTypeError(f"expected NAME=VALUE, got {raw!r}")
-    name, _, value = raw.partition("=")
-    name = name.strip()
-    if not name:
-        raise argparse.ArgumentTypeError(f"expected NAME=VALUE, got {raw!r}")
-    return name, value
+        return None, raw
+    prefix, _, rest = raw.partition("=")
+    if not _NAME_RE.match(prefix):
+        return None, raw
+    if list_valued:
+        if "," in rest:
+            return prefix, rest
+        return None, raw
+    if rest:
+        return prefix, rest
+    return None, raw
+
+
+def _assign_names(
+    raw_values: Sequence[str], *, list_valued: bool, default_prefix: str
+) -> list[tuple[str, str]]:
+    """Split each raw value, auto-naming unnamed ones `<prefix>`, `<prefix>2`, `<prefix>3`, ..."""
+    pairs: list[tuple[str, str]] = []
+    unnamed_count = 0
+    for raw in raw_values:
+        name, value = _split_name(raw, list_valued=list_valued)
+        if name is None:
+            unnamed_count += 1
+            name = default_prefix if unnamed_count == 1 else f"{default_prefix}{unnamed_count}"
+        pairs.append((name, value))
+    return pairs
 
 
 def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
@@ -76,27 +108,27 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     ask.add_argument("text", metavar="TEXT", help="The state/content to decide about")
     ask.add_argument(
         "--choice",
-        metavar="NAME=a,b,c",
+        metavar="[NAME=]a,b,c",
         action="append",
         default=[],
-        type=_parse_name_value,
-        help="A Choice question: comma-separated candidate names",
+        help="A Choice question: comma-separated candidate names. NAME= is optional; "
+        "unnamed --choice flags are named choice, choice2, ...",
     )
     ask.add_argument(
         "--score",
-        metavar="NAME=lo,mid,hi",
+        metavar="[NAME=]lo,mid,hi",
         action="append",
         default=[],
-        type=_parse_name_value,
-        help="A Score question: comma-separated levels, lowest to highest",
+        help="A Score question: comma-separated levels, lowest to highest. NAME= is "
+        "optional; unnamed --score flags are named score, score2, ...",
     )
     ask.add_argument(
         "--noul",
-        metavar="NAME=question text",
+        metavar="[NAME=]question text",
         action="append",
         default=[],
-        type=_parse_name_value,
-        help="A Noul (yes/no) question: its instruction text",
+        help="A Noul (yes/no) question: its instruction text. NAME= is optional; "
+        "unnamed --noul flags are named noul, noul2, ...",
     )
     ask.add_argument(
         "--instructions",
@@ -132,26 +164,34 @@ def _build_questions(
     args: argparse.Namespace, ask_parser: argparse.ArgumentParser
 ) -> dict[str, Question]:
     questions: dict[str, Question] = {}
+    seen_names: set[str] = set()
+
+    def _add(name: str, question: Question) -> None:
+        if name in seen_names:
+            raise ValueError(f"duplicate question name: {name!r}")
+        seen_names.add(name)
+        questions[name] = question
+
     try:
-        for name, value in args.choice:
+        for name, value in _assign_names(args.choice, list_valued=True, default_prefix="choice"):
             candidates = [c.strip() for c in value.split(",") if c.strip()]
             instructions = (
                 args.instructions if args.instructions is not None else f"Answer for: {name}"
             )
-            questions[name] = Choice(instructions, {c: None for c in candidates})
-        for name, value in args.score:
+            _add(name, Choice(instructions, {c: None for c in candidates}))
+        for name, value in _assign_names(args.score, list_valued=True, default_prefix="score"):
             levels = [c.strip() for c in value.split(",") if c.strip()]
             instructions = (
                 args.instructions if args.instructions is not None else f"Answer for: {name}"
             )
-            questions[name] = Score(instructions, levels)
-        for name, value in args.noul:
+            _add(name, Score(instructions, levels))
+        for name, value in _assign_names(args.noul, list_valued=False, default_prefix="noul"):
             instructions = (
                 value.strip()
                 if value.strip()
                 else (args.instructions if args.instructions is not None else f"Answer for: {name}")
             )
-            questions[name] = Noul(instructions)
+            _add(name, Noul(instructions))
     except ValueError as exc:
         ask_parser.error(str(exc))
     return questions
@@ -225,8 +265,18 @@ def _cmd_ask(args: argparse.Namespace, ask_parser: argparse.ArgumentParser) -> i
     return 0
 
 
-def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str]]:
-    """Report `(name, installed, configured)` for every registered backend."""
+def _install_hint(name: str) -> str:
+    """The `pip install "pydecide[...]"` command for the extra that installs `name`'s
+    dependency, or "" if the backend needs no extra (it's always installed)."""
+    extra = _EXTRAS.get(name)
+    return f'pip install "{extra}"' if extra else ""
+
+
+def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str, str]]:
+    """Report `(name, installed, configured, install_hint)` for every registered backend.
+
+    `install_hint` is the install command for a backend that isn't installed, "" otherwise.
+    """
     installed_by_name = available()
     rows = []
     for name in REGISTRY:
@@ -236,15 +286,16 @@ def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str]]:
             configured = "n/a"
         else:
             configured = "yes" if any(v in env for v in env_vars) else "no"
-        rows.append((name, installed, configured))
+        install_hint = "" if installed else _install_hint(name)
+        rows.append((name, installed, configured, install_hint))
     return rows
 
 
 def _cmd_backends(args: argparse.Namespace) -> int:
-    header = ("NAME", "INSTALLED", "CONFIGURED")
+    header = ("NAME", "INSTALLED", "CONFIGURED", "INSTALL")
     rows = [
-        (name, "yes" if installed else "no", configured)
-        for name, installed, configured in _backend_status(os.environ)
+        (name, "yes" if installed else "no", configured, install_hint)
+        for name, installed, configured, install_hint in _backend_status(os.environ)
     ]
     for line in _padded_table(header, rows):
         print(line)
