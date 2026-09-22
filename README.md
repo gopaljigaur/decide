@@ -15,19 +15,21 @@ protocol, so existing TypeSafe clients can point at a local model instead.
 ## Install
 
 ```bash
-pip install pydecide
+uv tool install pydecide   # the decide CLI on your PATH, from any directory
+uv add pydecide            # inside a project
 ```
 
-This includes the CLI, the hosted backends and the server.
+With pip: `pip install pydecide` / `pipx install pydecide`. Either way, this
+includes the CLI, the hosted backends and the server.
 
 Local model backends need an extra:
 
 ```bash
-pip install "pydecide[all]"
+uv tool install "pydecide[all]"
 ```
 
-Quote the brackets in zsh, since it otherwise tries to glob them. This pulls
-in PyTorch and MLX, about 2 GB.
+With pip: `pip install "pydecide[all]"`. Quote the brackets in zsh, since it
+otherwise tries to glob them. This pulls in PyTorch and MLX, about 2 GB.
 
 | Extra | Adds |
 |---|---|
