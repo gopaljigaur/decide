@@ -291,7 +291,7 @@ def test_backends_lists_registry_names(capsys):
     out = capsys.readouterr().out
     assert "typesafe" in out
     assert "llm" in out
-    assert "NAME" in out and "INSTALLED" in out and "CONFIGURED" in out
+    assert "NAME" in out and "INSTALLED" in out and "CONFIGURED" in out and "INSTALL" in out
 
 
 def test_backends_crossencoder_is_configured_n_a(capsys):
@@ -312,11 +312,50 @@ def test_backends_output_is_padded_and_aligned_with_no_trailing_whitespace(capsy
         assert line == line.rstrip(), f"line has trailing whitespace: {line!r}"
 
     rows = cli._backend_status(os.environ)
-    name_width = max(len("NAME"), *(len(name) for name, _, _ in rows))
+    name_width = max(len("NAME"), *(len(name) for name, _, _, _ in rows))
     header, *data_rows = lines
     assert header.startswith("NAME".ljust(name_width) + "  ")
-    for line, (name, _installed, _configured) in zip(data_rows, rows, strict=True):
+    for line, (name, _installed, _configured, _hint) in zip(data_rows, rows, strict=True):
         assert line.startswith(name.ljust(name_width) + "  ")
+
+
+def test_install_hint_for_extra_backed_backend():
+    assert cli._install_hint("laya") == 'pip install "pydecide[laya]"'
+    assert cli._install_hint("laya_mlx") == 'pip install "pydecide[mlx]"'
+    assert cli._install_hint("crossencoder") == 'pip install "pydecide[st]"'
+
+
+def test_install_hint_for_http_backend_is_empty():
+    assert cli._install_hint("typesafe") == ""
+    assert cli._install_hint("openrouter") == ""
+    assert cli._install_hint("llm") == ""
+
+
+def test_backends_appends_install_hint_for_not_installed_backends(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, False))
+
+    code = cli.main(["backends"])
+
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    rows = {line.split()[0]: line for line in lines[1:]}
+    assert 'pip install "pydecide[laya]"' in rows["laya"]
+    assert 'pip install "pydecide[mlx]"' in rows["laya_mlx"]
+    assert 'pip install "pydecide[st]"' in rows["crossencoder"]
+    assert "pip install" not in rows["typesafe"]
+    assert "pip install" not in rows["openrouter"]
+    assert "pip install" not in rows["llm"]
+
+
+def test_backends_omits_install_hint_for_installed_backends(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "available", lambda: dict.fromkeys(cli.REGISTRY, True))
+
+    code = cli.main(["backends"])
+
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    for line in lines[1:]:
+        assert "pip install" not in line
 
 
 def test_ask_table_rows_have_no_trailing_whitespace(monkeypatch, capsys):
@@ -334,7 +373,9 @@ def test_ask_table_rows_have_no_trailing_whitespace(monkeypatch, capsys):
 
 def test_backend_status_uses_given_env_mapping():
     rows = cli._backend_status({"TYPESAFE_API_KEY": "secret"})
-    row_by_name = {name: (installed, configured) for name, installed, configured in rows}
+    row_by_name = {
+        name: (installed, configured, hint) for name, installed, configured, hint in rows
+    }
 
     assert row_by_name["typesafe"][1] == "yes"
     assert row_by_name["openrouter"][1] == "no"

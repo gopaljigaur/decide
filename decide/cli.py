@@ -9,7 +9,7 @@ import re
 import sys
 from collections.abc import Mapping, Sequence
 
-from decide.backends import REGISTRY, available
+from decide.backends import _EXTRAS, REGISTRY, available
 from decide.client import Client
 from decide.errors import ConfigError, DecideError
 from decide.gate import Gate
@@ -265,8 +265,18 @@ def _cmd_ask(args: argparse.Namespace, ask_parser: argparse.ArgumentParser) -> i
     return 0
 
 
-def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str]]:
-    """Report `(name, installed, configured)` for every registered backend."""
+def _install_hint(name: str) -> str:
+    """The `pip install "pydecide[...]"` command for the extra that installs `name`'s
+    dependency, or "" if the backend needs no extra (it's always installed)."""
+    extra = _EXTRAS.get(name)
+    return f'pip install "{extra}"' if extra else ""
+
+
+def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str, str]]:
+    """Report `(name, installed, configured, install_hint)` for every registered backend.
+
+    `install_hint` is the install command for a backend that isn't installed, "" otherwise.
+    """
     installed_by_name = available()
     rows = []
     for name in REGISTRY:
@@ -276,15 +286,16 @@ def _backend_status(env: Mapping[str, str]) -> list[tuple[str, bool, str]]:
             configured = "n/a"
         else:
             configured = "yes" if any(v in env for v in env_vars) else "no"
-        rows.append((name, installed, configured))
+        install_hint = "" if installed else _install_hint(name)
+        rows.append((name, installed, configured, install_hint))
     return rows
 
 
 def _cmd_backends(args: argparse.Namespace) -> int:
-    header = ("NAME", "INSTALLED", "CONFIGURED")
+    header = ("NAME", "INSTALLED", "CONFIGURED", "INSTALL")
     rows = [
-        (name, "yes" if installed else "no", configured)
-        for name, installed, configured in _backend_status(os.environ)
+        (name, "yes" if installed else "no", configured, install_hint)
+        for name, installed, configured, install_hint in _backend_status(os.environ)
     ]
     for line in _padded_table(header, rows):
         print(line)
