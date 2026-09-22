@@ -43,12 +43,37 @@ The `mlx` extra depends on `laya-mlx`, which requires Python 3.11 or newer;
 on 3.10 the extra installs nothing and the `laya_mlx` backend is
 unavailable.
 
-## Quickstart: the fallback chain
+## Quickstart: zero configuration
 
-`Client.from_env()` builds a backend chain from whatever is installed and
-configured in the process environment. Pass an explicit `env=` mapping
-instead (e.g. in tests) to configure from something other than
-`os.environ`:
+Install a local backend and `decide ask` works right away, with no
+environment variables at all:
+
+```bash
+uv tool install "pydecide[mlx]"    # Apple Silicon
+# or
+uv tool install "pydecide[laya]"   # any platform (PyTorch)
+```
+
+```bash
+decide ask "I had a rough day, everything broke" --noul "Is the writer doing well?" --choice good,bad
+```
+
+```
+NAME    TYPE    ANSWER  PROBABILITIES
+choice  choice  bad     good=0.01 bad=0.99
+noul    noul    false   0.01
+backend=laya_mlx route=laya_mlx:ok latency=33.1ms
+```
+
+This is the real output of that command, run with `laya_mlx` installed and
+none of `DECIDE_LOCAL_MODEL`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`,
+`OPENAI_API_KEY`, `DECIDE_LLM_BASE_URL` or `DECIDE_BACKENDS` set.
+
+The Python client works the same way. `Client.from_env()` builds a backend
+chain from whatever is installed and configured in the process environment;
+with a local backend installed, it needs no variables either. Pass an
+explicit `env=` mapping instead (e.g. in tests) to configure from something
+other than `os.environ`:
 
 ```python
 from decide import Client, Choice, Score, Noul
@@ -77,21 +102,23 @@ r.scores["severity"].score  # 1.5522  (expected level index, 0..len(levels)-1)
 r.scores["severity"].probabilities  # [0.0197, 0.4083, 0.5719]
 r.nouls["refund"].noul  # 0.9461
 r.meta.backend  # "laya_mlx"
-r.meta.latency_ms  # 47.9
+r.meta.latency_ms  # 37.1
 r.meta.route  # ["laya_mlx:ok"]
 ```
 
-This was run against the `laya_mlx` backend
-(`DECIDE_LOCAL_MODEL=aac6fef/laya-multilingual-mlx`); every value above is
-the real output of that run, not illustrative.
+This was run against the `laya_mlx` backend with no environment variables
+set at all, using its own default checkpoint; every value above is the real
+output of that run, not illustrative.
 
-`from_env` picks the chain in this order, using whatever is both installed
-and configured: `laya_mlx` or `laya` (if `DECIDE_LOCAL_MODEL` is set),
-`typesafe` (if `TYPESAFE_API_KEY` is set), `openrouter` (if
-`OPENROUTER_API_KEY` is set), `llm` (if `DECIDE_LLM_BASE_URL` or
-`OPENAI_API_KEY` is set). Set `DECIDE_BACKENDS="laya,typesafe"` to override
-the order explicitly. If nothing is configured, `from_env` raises
-`ConfigError` naming every variable it checked.
+`from_env` picks the chain in this order, using whatever is installed and/or
+configured: `laya_mlx` or `laya`, whichever is importable, with its own
+default model unless `DECIDE_LOCAL_MODEL` overrides it; `typesafe` (if
+`TYPESAFE_API_KEY` is set); `openrouter` (if `OPENROUTER_API_KEY` is set);
+`llm` (if `DECIDE_LLM_BASE_URL` or `OPENAI_API_KEY` is set). A local backend,
+when installed, is tried first, with the hosted backends as fallback. Set
+`DECIDE_BACKENDS="laya,typesafe"` to override the order explicitly. If
+nothing is importable or configured, `from_env` raises `ConfigError` telling
+you to install a local backend or set a hosted one's API key.
 
 `AsyncClient` has the same surface, `await`ed: `await client.decide(...)`,
 `await client.decide_batch(...)`, `AsyncClient.from_env(...)`.
@@ -133,11 +160,17 @@ r.choices["team"].choice  # "billing"
 r.choices["team"].probabilities  # {"billing": 0.947, "eng": 0.019, "shipping": 0.034}
 ```
 
-### Environment variables
+### Environment variables: overrides and hosted-backend keys
+
+None of these are required to get started - see
+[Quickstart: zero configuration](#quickstart-zero-configuration) above. They
+either override a local backend that `from_env` already auto-selects once
+it's installed, or supply the API key a hosted backend needs to be
+auto-selected at all.
 
 | Variable | Backend | Meaning |
 |---|---|---|
-| `DECIDE_LOCAL_MODEL` | `laya`, `laya_mlx` | Hugging Face repo id (or local path) of the model to load. Required to auto-select either backend. |
+| `DECIDE_LOCAL_MODEL` | `laya`, `laya_mlx` | Overrides the default Hugging Face repo id (or local path) of the model to load. Optional: omit it and the installed local backend auto-selects with its own default model. |
 | `TYPESAFE_API_KEY` | `typesafe` | API key, sent as `Authorization: Bearer`. Required to auto-select `typesafe`. |
 | `TYPESAFE_BASE_URL` | `typesafe` | Overrides the default `https://api.typesafe.ai`. |
 | `OPENROUTER_API_KEY` | `openrouter` | API key, sent as `Authorization: Bearer`. Required to auto-select `openrouter`. |
@@ -333,14 +366,18 @@ decide backends
 NAME          INSTALLED  CONFIGURED  INSTALL
 typesafe      yes        no
 openrouter    yes        no
-laya          yes        no
-laya_mlx      yes        no
+laya          yes        default
+laya_mlx      yes        default
 crossencoder  yes        n/a
 llm           yes        no
 ```
 
 Every backend with `INSTALLED` `no` gets an `INSTALL` column naming the
-exact command to add it, e.g. `pip install "pydecide[laya]"`.
+exact command to add it, e.g. `pip install "pydecide[laya]"`. For `laya`
+and `laya_mlx`, `CONFIGURED` reads `default` when installed with no
+`DECIDE_LOCAL_MODEL` override (it will be auto-selected with its own
+default model), `yes` when `DECIDE_LOCAL_MODEL` is set, and `no` only when
+the backend isn't installed at all.
 
 `decide serve --backends a,b --host 127.0.0.1 --port 8811 [--api-key TOKEN] [--min-confidence FLOAT]`
 runs the HTTP server described above.
