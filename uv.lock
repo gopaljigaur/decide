@@ -1173,27 +1173,23 @@ name = "pydecide"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "httpx" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
 all = [
-    { name = "fastapi" },
     { name = "laya" },
     { name = "laya-mlx", marker = "python_full_version >= '3.11'" },
     { name = "sentence-transformers" },
     { name = "torch" },
-    { name = "uvicorn" },
 ]
 laya = [
     { name = "laya" },
 ]
 mlx = [
     { name = "laya-mlx", marker = "python_full_version >= '3.11'" },
-]
-server = [
-    { name = "fastapi" },
-    { name = "uvicorn" },
 ]
 st = [
     { name = "sentence-transformers" },
@@ -1213,14 +1209,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
+    { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "laya", marker = "extra == 'laya'", specifier = ">=0.3" },
     { name = "laya-mlx", marker = "python_full_version >= '3.11' and extra == 'mlx'", specifier = ">=0.1" },
-    { name = "pydecide", extras = ["server", "laya", "mlx", "st"], marker = "extra == 'all'" },
+    { name = "pydecide", extras = ["laya", "mlx", "st"], marker = "extra == 'all'" },
     { name = "sentence-transformers", marker = "extra == 'st'", specifier = ">=3.0" },
     { name = "torch", marker = "extra == 'st'" },
-    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.29" },
+    { name = "uvicorn", specifier = ">=0.29" },
 ]
 provides-extras = ["server", "laya", "mlx", "st", "all"]
 

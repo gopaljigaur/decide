@@ -186,10 +186,7 @@ did not), so the resolved siblings are not silently lost.
 
 ## Server: point TypeSafe's SDK at a local model
 
-Requires the `server` extra:
-
 ```bash
-pip install "pydecide[server]"
 DECIDE_LOCAL_MODEL=aac6fef/laya-multilingual-mlx decide serve --backends laya_mlx --port 8811
 ```
 
