@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.1 (2026-09-22)
+
+- `decide ask` question names are now optional: an unnamed `--choice`,
+  `--score` or `--noul` is auto-named `choice`/`score`/`noul`, with a second
+  unnamed flag of the same type becoming `choice2`/`score2`/`noul2`; explicit
+  `NAME=` names still work and can be mixed with unnamed flags. Duplicate
+  explicit names are now a usage error instead of silently overwriting each
+  other.
+- FastAPI and uvicorn moved into the base install, so `pip install pydecide`
+  is enough to run `decide serve`; `server` remains as an empty extra for
+  compatibility with `pip install "pydecide[server]"`.
+- `decide backends` now shows an `INSTALL` column with the exact
+  `pip install "pydecide[...]"` command for every backend that isn't
+  installed.
+
 ## 0.1.0 (2026-09-22)
 
 - Add `Choice`, `Score`, `Noul`, `Request`, `Response` and their answer types
