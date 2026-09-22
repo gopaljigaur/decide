@@ -68,12 +68,135 @@ def test_ask_requires_at_least_one_question(monkeypatch, capsys):
     assert err.strip() != ""
 
 
-def test_ask_choice_flag_without_equals_is_usage_error(capsys):
+def test_ask_choice_flag_without_equals_is_unnamed_single_candidate(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
     code = cli.main(["ask", "x", "--choice", "team-no-equals"])
+
+    assert code == 0
+    assert set(captured["questions"]) == {"choice"}
+    assert list(captured["questions"]["choice"].criteria) == ["team-no-equals"]
+
+
+def test_ask_unnamed_choice_is_named_choice(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--choice", "good,bad"])
+
+    assert set(captured["questions"]) == {"choice"}
+    assert set(captured["questions"]["choice"].criteria) == {"good", "bad"}
+
+
+def test_ask_unnamed_score_is_named_score(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--score", "lo,mid,hi"])
+
+    assert set(captured["questions"]) == {"score"}
+    assert list(captured["questions"]["score"].criteria) == ["lo", "mid", "hi"]
+
+
+def test_ask_unnamed_noul_is_named_noul(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--noul", "Is the writer doing well?"])
+
+    assert set(captured["questions"]) == {"noul"}
+    assert captured["questions"]["noul"].instructions == "Is the writer doing well?"
+
+
+def test_ask_two_unnamed_nouls_get_noul_and_noul2(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(
+        [
+            "ask",
+            "x",
+            "--noul",
+            "Is the writer doing well?",
+            "--noul",
+            "Did they ask for a refund?",
+        ]
+    )
+
+    assert set(captured["questions"]) == {"noul", "noul2"}
+    assert captured["questions"]["noul"].instructions == "Is the writer doing well?"
+    assert captured["questions"]["noul2"].instructions == "Did they ask for a refund?"
+
+
+def test_ask_mixed_named_and_unnamed_questions(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--choice", "team=billing,eng", "--noul", "Is the writer doing well?"])
+
+    assert set(captured["questions"]) == {"team", "noul"}
+    assert captured["questions"]["noul"].instructions == "Is the writer doing well?"
+
+
+def test_ask_noul_text_with_equals_and_spaces_is_unnamed(monkeypatch):
+    captured = {}
+
+    def _fabricate(request):
+        captured["questions"] = dict(request.questions)
+        return {name: FakeBackend()._fabricate(q) for name, q in request.questions.items()}
+
+    client = Client([FakeBackend("fake", answers=_fabricate)])
+    _patch_make_client(monkeypatch, client)
+
+    cli.main(["ask", "x", "--noul", "Is the writer = doing well?"])
+
+    assert set(captured["questions"]) == {"noul"}
+    assert captured["questions"]["noul"].instructions == "Is the writer = doing well?"
+
+
+def test_ask_duplicate_explicit_names_is_usage_error(capsys):
+    code = cli.main(["ask", "x", "--choice", "team=billing,eng", "--score", "team=lo,mid,hi"])
 
     assert code == 2
     err = capsys.readouterr().err
-    assert err.strip() != ""
+    assert "team" in err
 
 
 def test_ask_instructions_default_used_for_choice_and_score(monkeypatch):
