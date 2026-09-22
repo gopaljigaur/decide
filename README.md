@@ -355,8 +355,13 @@ refund    noul    true      0.87
 backend=laya_mlx route=laya_mlx:ok latency=34.8ms
 ```
 
-`--json` prints a machine-readable payload instead of the table.
-`--min-confidence` and `--model` are also available on `ask`.
+`--json` prints a machine-readable payload instead of the table, and writes
+only that JSON to stdout, so `decide ask ... --json | jq .` is safe to use
+in scripts. `--min-confidence` and `--model` are also available on `ask`.
+By default, `ask` and `serve` set `HF_HUB_DISABLE_PROGRESS_BARS=1` (unless
+it's already set) so a local backend's model-loading progress bars don't
+mix into that output; pass `--verbose` to see them. When shown, that
+progress goes to stderr, never stdout.
 
 ```bash
 decide backends

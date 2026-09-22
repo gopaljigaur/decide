@@ -139,6 +139,12 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     ask.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     ask.add_argument("--min-confidence", type=float, default=None, metavar="FLOAT")
     ask.add_argument("--model", default=None, metavar="NAME")
+    ask.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show model loader progress bars (huggingface_hub, laya-mlx) instead of "
+        "silencing them",
+    )
 
     subparsers.add_parser("backends", help="List available and configured backends")
 
@@ -156,6 +162,12 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         "environment variable when omitted; this flag takes precedence over it.",
     )
     serve.add_argument("--min-confidence", type=float, default=0.0, metavar="FLOAT")
+    serve.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show model loader progress bars (huggingface_hub, laya-mlx) instead of "
+        "silencing them",
+    )
 
     return parser, ask
 
@@ -334,6 +346,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser, ask_parser = _build_parser()
     try:
         args = parser.parse_args(argv)
+        if not getattr(args, "verbose", False):
+            # Model loaders (huggingface_hub, laya-mlx) print progress bars to stderr while
+            # loading a local backend; silence them by default so the CLI's output is only
+            # our table/JSON, unless the user opted into --verbose.
+            os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
         if args.command == "ask":
             return _cmd_ask(args, ask_parser)
         if args.command == "backends":
