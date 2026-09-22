@@ -1,6 +1,6 @@
 [project]
 name = "pydecide"
-version = "0.1.2"
+version = "0.1.3"
 description = "One client for every decision model: Choice, Score and Noul over Jev, OpenRouter, laya, MLX, CrossEncoders and an LLM fallback."
 readme = "README.md"
 license = "MIT"

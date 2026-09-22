@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 (2026-09-22)
+
+- The CLI silences model loader progress output by default; `--verbose` on `ask` and `serve` shows it again. `--json` output is only JSON on stdout.
+
 ## 0.1.2 (2026-09-22)
 
 - `Client.from_env`/`AsyncClient.from_env` now auto-select an installed
