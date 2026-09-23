@@ -6,11 +6,18 @@
 `decide` is one Python client for typed decisions - Choice, Score and Noul -
 over any "System One" decision model: TypeSafe's hosted Jev, OpenRouter's
 Decisions endpoint, the open-weight laya family (PyTorch and MLX), any
-sentence-transformers CrossEncoder, and a JSON-prompted LLM fallback. A
-`Client` takes an ordered list of backends and a confidence policy: if a
-backend errors or answers with low confidence, the next backend is tried.
-The library also ships a small HTTP server that speaks TypeSafe's wire
-protocol, so existing TypeSafe clients can point at a local model instead.
+sentence-transformers CrossEncoder, and a JSON-prompted LLM fallback. The
+core of the library is the fallback chain: a `Client` takes an ordered list
+of these backends and a confidence policy, and if a backend errors or
+answers with low confidence, the next backend in the chain is tried, so a
+cheap local model can back off to a hosted one only when it's unsure.
+
+The library also ships a small HTTP server (see
+[Server](#server-point-typesafes-sdk-at-a-local-model) below) that speaks
+TypeSafe's wire protocol. laya now ships its own `laya-serve` as of 0.3.7,
+so this server isn't the reason to reach for `decide` if you only run laya
+- its purpose is chaining several backends (local and hosted) behind one
+TypeSafe-compatible endpoint.
 
 ## Install
 
@@ -189,9 +196,15 @@ from decide import Gate
 Gate(
     min_confidence=0.0,  # top probability of a Choice, max(noul, 1-noul) for a Noul
     per_question=None,  # optional {"question_name": threshold} overrides
+    per_type=None,  # optional {"choice"/"score"/"noul": threshold} overrides
     on_error="next",  # or "raise" to stop the chain on the first BackendError
 )
 ```
+
+For a question with a threshold set at more than one level, the most
+specific one wins: `per_question[name]`, else `per_type[<the question's
+type>]`, else `min_confidence`. Score answers are never gated regardless of
+which of these sets a threshold for `"score"`.
 
 For each backend in order: call it. On `BackendError` with `on_error="next"`,
 append `"<name>:error"` to `meta.route` and try the next backend (with
@@ -228,7 +241,52 @@ backend's batch path in v1. If any state in the batch is left unrouted,
 keyed by input index) and `failed` (the route so far for every state that
 did not), so the resolved siblings are not silently lost.
 
+### Choosing a threshold
+
+[Jevals](https://jevals.com/choice/), an independent Jev benchmark, measured
+Jev's own accuracy against the confidence threshold it would take to reach
+it, over 1,500 decisions per task:
+
+Banking77, a `Choice` task (overall accuracy 79.7%):
+
+| Threshold | Coverage | Accuracy |
+|---|---|---|
+| 0.55 | 93% | 83.4% |
+| 0.65 | 88% | 85.1% |
+| 0.85 | 76% | 88.6% |
+| 0.96 | 59% | 94.3% |
+
+PubMedQA, a yes/no `Noul` task (overall accuracy 91.3%):
+
+| Threshold | Coverage | Accuracy |
+|---|---|---|
+| 0.55 | 98% | 92.0% |
+| 0.65 | 94% | 92.7% |
+| 0.85 | 69% | 96.4% |
+| 0.91 | 49% | 98.6% |
+
+Two things follow from this. First, thresholds below about 0.85 filter
+almost nothing - most of the accuracy gain from gating shows up only once
+the threshold climbs well past the model's overall accuracy. Second, Jev
+clips its probabilities to the 0.01-0.99 range, so a yes/no answer rarely
+exceeds 0.98; a single `min_confidence` applied to both `Choice` and `Noul`
+answers therefore behaves very differently across the two - a 0.96
+threshold still keeps 59% of choice answers but only about 11% of yes/no
+answers. Use `per_type` to set separate thresholds:
+
+```python
+from decide import Gate
+
+Gate(per_type={"choice": 0.85, "noul": 0.95})
+```
+
 ## Server: point TypeSafe's SDK at a local model
+
+laya ships its own `laya-serve` command as of 0.3.7, so if you only run
+laya behind a single endpoint, that's the more direct option. Reach for
+`decide serve` instead when you want to chain several backends - local
+and/or hosted - behind one TypeSafe-compatible endpoint, with the same
+fallback and gating behavior as the Python client.
 
 ```bash
 DECIDE_LOCAL_MODEL=aac6fef/laya-multilingual-mlx decide serve --backends laya_mlx --port 8811
@@ -406,7 +464,7 @@ accordingly - as a signal to gate and fall back on, not as ground truth.
 
 ## Status
 
-`pydecide` is at 0.1.1. The public API may still change before a 1.0
+`pydecide` is at 0.2.0. The public API may still change before a 1.0
 release.
 
 ## License
