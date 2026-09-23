@@ -1,6 +1,6 @@
 [project]
 name = "pydecide"
-version = "0.2.0"
+version = "0.2.1"
 description = "One client for every decision model: Choice, Score and Noul over Jev, OpenRouter, laya, MLX, CrossEncoders and an LLM fallback."
 readme = "README.md"
 license = "MIT"
@@ -41,7 +41,7 @@ build-backend = "hatchling.build"
 packages = ["decide"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [".superpowers/", "docs/superpowers/plans/"]
+exclude = [".superpowers/"]
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "fastapi>=0.110", "httpx>=0.27", "typesafe-sdk", "jsonschema>=4"]
@@ -61,7 +61,6 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

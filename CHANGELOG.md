@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-09-23)
+
+- Remove internal development notes from the repository and the source distribution.
+
 ## 0.2.0 (2026-09-23)
 
 - `Choice.criteria` and `Noul.criteria` now also accept a list of strings
