@@ -24,15 +24,21 @@ def _frozen_mapping(m: Mapping) -> Mapping:
 class Choice:
     """Pick one of several candidates.
 
-    `criteria` maps candidate name to optional description.
+    `criteria` maps candidate name to optional description. A non-str `Sequence`
+    of candidate names (e.g. `["billing", "engineering"]`) is also accepted and
+    normalized to a mapping of name to `None`.
     """
 
     instructions: Content
-    criteria: Mapping[str, Content | None]
+    criteria: Mapping[str, Content | None] | Sequence[str]
 
     def __post_init__(self) -> None:
         if not self.criteria:
             raise ValueError("Choice.criteria must contain at least one candidate")
+        if not isinstance(self.criteria, Mapping):
+            if any(not isinstance(c, str) for c in self.criteria):
+                raise ValueError("Choice.criteria entries must be strings")
+            object.__setattr__(self, "criteria", dict.fromkeys(self.criteria))
         if any(not isinstance(k, str) or not k for k in self.criteria):
             raise ValueError("Choice.criteria keys must be non-empty strings")
         object.__setattr__(self, "criteria", _frozen_mapping(self.criteria))
@@ -55,14 +61,26 @@ class Score:
 class Noul:
     """Yes/no judgement as probability in [0, 1].
 
-    Optional descriptions for 'true' and 'false'.
+    Optional descriptions for 'true' and 'false'. A 1- or 2-element non-str
+    `Sequence` (e.g. `["yes it is", "no it is not"]`) is also accepted and
+    normalized positionally: the first element becomes 'true', the second
+    (if present) becomes 'false'.
     """
 
     instructions: Content
-    criteria: Mapping[str, Content] | None = None
+    criteria: Mapping[str, Content] | Sequence[str] | None = None
 
     def __post_init__(self) -> None:
         if self.criteria is not None:
+            if not isinstance(self.criteria, Mapping):
+                if not 1 <= len(self.criteria) <= 2 or any(
+                    not isinstance(c, str) for c in self.criteria
+                ):
+                    raise ValueError(
+                        "Noul.criteria as a sequence must be 1 or 2 strings, true then false"
+                    )
+                keys = ("true", "false")
+                object.__setattr__(self, "criteria", dict(zip(keys, self.criteria, strict=False)))
             if set(self.criteria) - {"true", "false"} or not self.criteria:
                 raise ValueError("Noul.criteria keys must be 'true' and/or 'false'")
             object.__setattr__(self, "criteria", _frozen_mapping(self.criteria))

@@ -30,6 +30,26 @@ def test_choice_requires_candidates_and_unique_names():
         c.criteria["z"] = None  # immutable
 
 
+def test_choice_accepts_list_shaped_criteria():
+    c = Choice("q", ["billing", "engineering"])
+    assert c.criteria == {"billing": None, "engineering": None}
+
+
+def test_choice_accepts_tuple_shaped_criteria():
+    c = Choice("q", ("billing", "engineering"))
+    assert c.criteria == {"billing": None, "engineering": None}
+
+
+def test_choice_rejects_empty_list_criteria():
+    with pytest.raises(ValueError, match="criteria"):
+        Choice("q", [])
+
+
+def test_choice_rejects_non_string_entries_in_list_criteria():
+    with pytest.raises(ValueError, match="criteria"):
+        Choice("q", [1, 2])
+
+
 def test_score_requires_two_levels():
     with pytest.raises(ValueError, match="criteria"):
         Score("q", ["only"])
@@ -41,6 +61,26 @@ def test_noul_criteria_keys_restricted():
     Noul("q", {"true": "yes"})
     with pytest.raises(ValueError, match="criteria"):
         Noul("q", {"maybe": "x"})
+
+
+def test_noul_accepts_two_element_list_criteria_as_true_then_false():
+    n = Noul("q", ["yes it is", "no it is not"])
+    assert n.criteria == {"true": "yes it is", "false": "no it is not"}
+
+
+def test_noul_accepts_one_element_list_criteria_as_true_only():
+    n = Noul("q", ["yes it is"])
+    assert n.criteria == {"true": "yes it is"}
+
+
+def test_noul_rejects_three_element_list_criteria():
+    with pytest.raises(ValueError, match="criteria"):
+        Noul("q", ["a", "b", "c"])
+
+
+def test_noul_rejects_non_string_entries_in_list_criteria():
+    with pytest.raises(ValueError, match="criteria"):
+        Noul("q", [1, 2])
 
 
 def test_request_needs_questions_with_names():
