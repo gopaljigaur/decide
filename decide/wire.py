@@ -74,12 +74,16 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
         if "criteria" not in wire:
             raise ValueError(f"question '{name}' is missing 'criteria'")
         criteria = wire["criteria"]
-        if not isinstance(criteria, Mapping):
+        if isinstance(criteria, Mapping):
+            criteria = dict(criteria)
+        elif isinstance(criteria, str | bytes) or not isinstance(criteria, Sequence):
             raise ValueError(
                 f"question '{name}' criteria must be a mapping of candidate name to "
-                "description for type 'choice'"
+                "description, or a list of candidate names, for type 'choice'"
             )
-        return Choice(_wire_instructions(wire), dict(criteria))
+        else:
+            criteria = list(criteria)
+        return Choice(_wire_instructions(wire), criteria)
 
     if qtype == "score":
         if "criteria" not in wire:
@@ -95,12 +99,16 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
         criteria = wire.get("criteria")
         if criteria is None:
             return Noul(_wire_instructions(wire))
-        if not isinstance(criteria, Mapping):
+        if isinstance(criteria, Mapping):
+            criteria = dict(criteria)
+        elif isinstance(criteria, str | bytes) or not isinstance(criteria, Sequence):
             raise ValueError(
-                f"question '{name}' criteria must be a mapping with 'true'/'false' keys "
-                "for type 'noul'"
+                f"question '{name}' criteria must be a mapping with 'true'/'false' keys, "
+                "or a list of 1 or 2 strings (true then false), for type 'noul'"
             )
-        return Noul(_wire_instructions(wire), dict(criteria))
+        else:
+            criteria = list(criteria)
+        return Noul(_wire_instructions(wire), criteria)
 
     raise ValueError(f"question '{name}' has unknown type {qtype!r}")
 

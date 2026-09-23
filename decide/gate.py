@@ -4,6 +4,12 @@ from typing import Literal
 
 from decide.types import ChoiceAnswer, NoulAnswer, Response, ScoreAnswer
 
+_TYPE_NAMES: Mapping[type, str] = {
+    ChoiceAnswer: "choice",
+    ScoreAnswer: "score",
+    NoulAnswer: "noul",
+}
+
 
 @dataclass(frozen=True)
 class Gate:
@@ -11,7 +17,14 @@ class Gate:
 
     min_confidence: float = 0.0
     per_question: Mapping[str, float] | None = None
+    per_type: Mapping[str, float] | None = None
     on_error: Literal["next", "raise"] = "next"
+
+    def __post_init__(self) -> None:
+        if self.per_type is not None:
+            unknown = set(self.per_type) - {"choice", "score", "noul"}
+            if unknown:
+                raise ValueError(f"Gate.per_type has unknown keys: {sorted(unknown)}")
 
     def confidence(self, response: Response) -> dict[str, float]:
         """Calculate confidence for each non-Score answer.
@@ -42,9 +55,12 @@ class Gate:
             if isinstance(response.answers[name], ScoreAnswer):
                 continue
 
-            # Get the threshold for this question
+            # Get the threshold for this question: per_question, else per_type
+            # (keyed by the answer's type), else min_confidence.
             if self.per_question and name in self.per_question:
                 threshold = self.per_question[name]
+            elif self.per_type and _TYPE_NAMES[type(response.answers[name])] in self.per_type:
+                threshold = self.per_type[_TYPE_NAMES[type(response.answers[name])]]
             else:
                 threshold = self.min_confidence
 

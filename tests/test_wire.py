@@ -405,13 +405,9 @@ def test_parse_wire_request_rejects_missing_criteria_for_choice_and_score():
 
 
 def test_parse_wire_request_rejects_wrong_criteria_container_per_type():
-    with pytest.raises(ValueError, match="criteria"):
-        parse_wire_request(
-            {
-                "state": "s",
-                "questions": {"q": {"type": "choice", "instructions": "x", "criteria": ["a", "b"]}},
-            }
-        )
+    # Score never accepts a mapping (it's an ordered list of levels, not named
+    # candidates), even though Choice and Noul both now accept a list (see
+    # test_parse_wire_request_accepts_list_shaped_choice_and_noul_criteria).
     with pytest.raises(ValueError, match="criteria"):
         parse_wire_request(
             {
@@ -419,15 +415,37 @@ def test_parse_wire_request_rejects_wrong_criteria_container_per_type():
                 "questions": {"q": {"type": "score", "instructions": "x", "criteria": {"a": "b"}}},
             }
         )
-    with pytest.raises(ValueError, match="criteria"):
-        parse_wire_request(
-            {
-                "state": "s",
-                "questions": {
-                    "q": {"type": "noul", "instructions": "x", "criteria": ["true", "false"]}
+
+
+def test_parse_wire_request_accepts_list_shaped_choice_and_noul_criteria():
+    parsed = parse_wire_request(
+        {
+            "state": "s",
+            "questions": {
+                "team": {
+                    "type": "choice",
+                    "instructions": "Which team?",
+                    "criteria": ["billing", "engineering"],
                 },
-            }
-        )
+                "refund": {
+                    "type": "noul",
+                    "instructions": "Refund asked?",
+                    "criteria": ["yes it is", "no it is not"],
+                },
+            },
+        }
+    )
+    assert parsed.questions["team"] == Choice("Which team?", {"billing": None, "engineering": None})
+    assert parsed.questions["refund"] == Noul(
+        "Refund asked?", {"true": "yes it is", "false": "no it is not"}
+    )
+    # Canonical wire form is always the mapping shape, list in mapping out.
+    wire = to_wire_request(parsed)
+    assert wire["questions"]["team"]["criteria"] == {"billing": None, "engineering": None}
+    assert wire["questions"]["refund"]["criteria"] == {
+        "true": "yes it is",
+        "false": "no it is not",
+    }
 
 
 def test_from_wire_answers_tolerates_sparse_score_probabilities():

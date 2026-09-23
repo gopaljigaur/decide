@@ -55,6 +55,44 @@ def test_systemone_round_trip_returns_answers_and_route():
     assert payload["usage"] == {"input_tokens": 0, "output_tokens": 0}
 
 
+def test_systemone_200_with_choice_criteria_as_list():
+    client = Client([FakeBackend(name="ok")])
+    app = create_app(client)
+    tc = TestClient(app)
+
+    questions = dict(QUESTIONS)
+    questions["team"] = {
+        "type": "choice",
+        "instructions": "Which team?",
+        "criteria": ["billing", "eng"],
+    }
+
+    resp = tc.post("/v1/systemone", json=_body(questions=questions))
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["answers"]["team"]["choice"] in {"billing", "eng"}
+
+
+def test_systemone_200_with_noul_criteria_as_list():
+    client = Client([FakeBackend(name="ok")])
+    app = create_app(client)
+    tc = TestClient(app)
+
+    questions = dict(QUESTIONS)
+    questions["refund"] = {
+        "type": "noul",
+        "instructions": "Refund asked?",
+        "criteria": ["yes it is", "no it is not"],
+    }
+
+    resp = tc.post("/v1/systemone", json=_body(questions=questions))
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["answers"]["refund"]["type"] == "noul"
+
+
 def test_systemone_uses_backend_meta_model_when_present():
     backend = FakeBackend(name="ok")
     backend.model = "fake-model-v1"

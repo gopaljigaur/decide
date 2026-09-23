@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 (2026-09-23)
+
+- `Choice.criteria` and `Noul.criteria` now also accept a list of strings
+  (candidate names for `Choice`, true then false for `Noul`), normalized to
+  the same mapping shape as before; `parse_wire_request` and the server
+  accept the equivalent wire shapes for free. No breaking changes - the
+  mapping shape still works exactly as before, and `to_wire_request` still
+  emits the mapping form.
+- `Gate` gained `per_type`, an optional `{"choice"/"score"/"noul":
+  threshold}` mapping. Per question, the most specific threshold wins:
+  `per_question`, then `per_type`, then `min_confidence`. No breaking
+  changes - `per_type` defaults to `None` and behavior is unchanged unless
+  it's set.
+- README: reframed the opening around the fallback chain, noted that laya
+  now ships its own `laya-serve` server, and added a "Choosing a threshold"
+  section with measured Jev accuracy-vs-threshold data from Jevals to guide
+  `min_confidence`/`per_type` choices.
+
 ## 0.1.3 (2026-09-22)
 
 - The CLI silences model loader progress output by default; `--verbose` on `ask` and `serve` shows it again. `--json` output is only JSON on stdout.
