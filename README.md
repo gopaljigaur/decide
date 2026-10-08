@@ -3,7 +3,7 @@
 [![CI](https://github.com/gopaljigaur/decide/actions/workflows/ci.yml/badge.svg)](https://github.com/gopaljigaur/decide/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pydecide)](https://pypi.org/project/pydecide/)
 
-`decide` is one Python client for typed decisions - Choice, Score and Noul -
+`decide` is one Python client for typed decisions (Choice, Score and Noul)
 over any "System One" decision model: TypeSafe's hosted Jev, OpenRouter's
 Decisions endpoint, the open-weight laya family (PyTorch and MLX), any
 sentence-transformers CrossEncoder, and a JSON-prompted LLM fallback. The
@@ -218,7 +218,7 @@ r.choices["team"].probabilities  # {"billing": 0.947, "eng": 0.019, "shipping": 
 
 ### Environment variables: overrides and hosted-backend keys
 
-None of these are required to get started - see
+None of these are required to get started. See
 [Quickstart: zero configuration](#quickstart-zero-configuration) above. They
 either override a local backend that `from_env` already auto-selects once
 it's installed, or supply the API key a hosted backend needs to be
@@ -315,11 +315,11 @@ PubMedQA, a yes/no `Noul` task (overall accuracy 91.3%):
 | 0.91 | 49% | 98.6% |
 
 Two things follow from this. First, thresholds below about 0.85 filter
-almost nothing - most of the accuracy gain from gating shows up only once
+almost nothing, because most of the accuracy gain from gating shows up only once
 the threshold climbs well past the model's overall accuracy. Second, Jev
 clips its probabilities to the 0.01-0.99 range, so a yes/no answer rarely
 exceeds 0.98; a single `min_confidence` applied to both `Choice` and `Noul`
-answers therefore behaves very differently across the two - a 0.96
+answers therefore behaves very differently across the two. A 0.96
 threshold still keeps 59% of choice answers but only about 11% of yes/no
 answers. Use `per_type` to set separate thresholds:
 
@@ -333,8 +333,8 @@ Gate(per_type={"choice": 0.85, "noul": 0.95})
 
 laya ships its own `laya-serve` command as of 0.3.7, so if you only run
 laya behind a single endpoint, that's the more direct option. Reach for
-`decide serve` instead when you want to chain several backends - local
-and/or hosted - behind one TypeSafe-compatible endpoint, with the same
+`decide serve` instead when you want to chain several backends, local
+or hosted, behind one TypeSafe-compatible endpoint, with the same
 fallback and gating behavior as the Python client.
 
 ```bash
@@ -502,14 +502,14 @@ verify it. What that means differs by backend: `typesafe`, `openrouter` and
 `laya`/`laya_mlx` are purpose-built decision models, but their outputs are
 still self-reported by the model and not audited by this library. The
 `crossencoder` backend turns a relevance reranker's raw logits into a
-softmax or sigmoid - the result is a *normalized score* forced to distribute
+softmax or sigmoid, so the result is a *normalized score* forced to distribute
 mass over the supplied candidates, not a calibrated probability; a `Choice`
 will still pick a winner even when every candidate is a bad fit, and a
 `Noul` of 0.9 does not mean the condition holds 90% of the time. The `llm`
 backend is the least trustworthy of all: it prompts a general chat model to
 estimate its own confidence in JSON, with no guarantee the model attends to
 every candidate or keeps its numbers well calibrated. Treat all of this
-accordingly - as a signal to gate and fall back on, not as ground truth.
+accordingly, as a signal to gate and fall back on, not as ground truth.
 
 ## Status
 

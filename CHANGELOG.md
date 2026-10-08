@@ -13,7 +13,7 @@
 - `Choice.criteria` and `Noul.criteria` now also accept a list of strings
   (candidate names for `Choice`, true then false for `Noul`), normalized to
   the same mapping shape as before; `parse_wire_request` and the server
-  accept the equivalent wire shapes for free. No breaking changes - the
+  accept the equivalent wire shapes for free. No breaking changes: the
   mapping shape still works exactly as before, and `to_wire_request` still
   emits the mapping form.
 - `Gate` gained `per_type`, an optional `{"choice"/"score"/"noul":
