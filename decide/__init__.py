@@ -1,4 +1,5 @@
 from decide.client import AsyncClient, Client
+from decide.compat import AsyncTypeSafeClient, TypeSafeClient
 from decide.errors import (
     AllBackendsFailed,
     AuthError,
@@ -29,6 +30,7 @@ __version__ = "0.2.1"
 __all__ = [
     "AllBackendsFailed",
     "AsyncClient",
+    "AsyncTypeSafeClient",
     "AuthError",
     "BackendConnectionError",
     "BackendError",
@@ -49,5 +51,6 @@ __all__ = [
     "Response",
     "Score",
     "ScoreAnswer",
+    "TypeSafeClient",
     "__version__",
 ]

@@ -187,3 +187,14 @@ def test_live_typesafe():
     b = TypeSafeBackend(api_key=os.environ["TYPESAFE_API_KEY"])
     r = b.decide(REQ)
     assert set(r.choices["team"].probabilities) == {"billing", "eng"}
+
+
+def test_extra_headers_are_sent_alongside_authorization():
+    seen = {}
+
+    def handler(r):
+        seen["h"] = r.headers
+        return httpx.Response(200, json=OK)
+
+    _backend(handler, headers={"X-Team": "a"}).decide(REQ)
+    assert seen["h"]["authorization"] == "Bearer sk-test" and seen["h"]["x-team"] == "a"
