@@ -32,6 +32,7 @@ from decide.wire import to_wire_answers
 _ENV_VARS: dict[str, tuple[str, ...]] = {
     "typesafe": ("TYPESAFE_API_KEY",),
     "openrouter": ("OPENROUTER_API_KEY",),
+    "openai_decisions": ("OPENAI_API_KEY",),
     "llm": ("DECIDE_LLM_BASE_URL", "OPENAI_API_KEY"),
     "laya": ("DECIDE_LOCAL_MODEL",),
     "laya_mlx": ("DECIDE_LOCAL_MODEL",),

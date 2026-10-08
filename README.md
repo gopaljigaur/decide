@@ -182,6 +182,7 @@ output of that run, not illustrative.
 configured: `laya_mlx` or `laya`, whichever is importable, with its own
 default model unless `DECIDE_LOCAL_MODEL` overrides it; `typesafe` (if
 `TYPESAFE_API_KEY` is set); `openrouter` (if `OPENROUTER_API_KEY` is set);
+`openai_decisions` (if `OPENAI_API_KEY` is set and `DECIDE_OPENAI_DECISIONS` is not `0`);
 `llm` (if `DECIDE_LLM_BASE_URL` or `OPENAI_API_KEY` is set). A local backend,
 when installed, is tried first, with the hosted backends as fallback. Set
 `DECIDE_BACKENDS="laya,typesafe"` to override the order explicitly. If
@@ -197,6 +198,7 @@ you to install a local backend or set a hosted one's API key.
 |---|---|---|---|
 | `typesafe.py` | `typesafe` | none (httpx only) | `POST {base_url}/v1/systemone`, bearer auth. Default base URL `https://api.typesafe.ai`, default model `jev-latest`. |
 | `openrouter.py` | `openrouter` | none | Same wire shape as `typesafe`, `POST https://openrouter.ai/api/alpha/decisions`, default model `typesafe/jev-latest`. |
+| `openai_decisions.py` | `openai_decisions` | none (httpx only) | OpenAI Decisions API (public beta), `POST https://api.openai.com/v1/decisions`, bearer auth, default model `gpt-6-luna`. A `Noul` is a `predicate` question; a `Noul`'s true/false descriptions are appended to its instructions, since the API has no field for them. A refusal raises `BadResponseError`. |
 | `laya.py` | `laya` | `pydecide[laya]` | Local PyTorch `laya.Agent`, default model `convaiinnovations/laya` when constructed directly. |
 | `laya_mlx.py` | `laya_mlx` | `pydecide[mlx]` (Python 3.11+) | Local MLX `laya_mlx.Agent` (Apple Silicon), default model `aac6fef/laya-multilingual-mlx` when constructed directly. |
 | `crossencoder.py` | `crossencoder` | `pydecide[st]` | Local `sentence_transformers.CrossEncoder`. Not configurable from the environment; construct it directly and pass it to `Client([...])`. |
@@ -242,8 +244,10 @@ auto-selected at all.
 | `TYPESAFE_API_KEY` | `typesafe` | API key, sent as `Authorization: Bearer`. Required to auto-select `typesafe`. |
 | `TYPESAFE_BASE_URL` | `typesafe` | Overrides the default `https://api.typesafe.ai`. |
 | `OPENROUTER_API_KEY` | `openrouter` | API key, sent as `Authorization: Bearer`. Required to auto-select `openrouter`. |
+| `OPENAI_API_KEY` | `openai_decisions`, `llm` | API key, sent as `Authorization: Bearer`. Setting it auto-selects `openai_decisions` and `llm`; the `llm` backend sends it only if the server needs one. |
+| `DECIDE_OPENAI_DECISIONS` | `openai_decisions` | Set to `0` to stop `OPENAI_API_KEY` from auto-selecting `openai_decisions`. |
+| `DECIDE_OPENAI_DECISIONS_MODEL` | `openai_decisions` | Model to request; defaults to `gpt-6-luna`. |
 | `DECIDE_LLM_BASE_URL` | `llm` | Base URL of an OpenAI-compatible chat-completions server. Setting it (or `OPENAI_API_KEY`) auto-selects `llm`. |
-| `OPENAI_API_KEY` | `llm` | API key, sent as `Authorization: Bearer`, if the server needs one. |
 | `DECIDE_LLM_MODEL` | `llm` | Model name to request; defaults to `gpt-4o-mini`. |
 | `DECIDE_BACKENDS` | `Client.from_env` | Comma-separated backend names, overriding auto-detection entirely. |
 | `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
@@ -280,6 +284,23 @@ seen so far (highest minimum confidence across its gated answers) is
 returned, with `meta.route[-1] == "<name>:accepted_low_confidence"`. If no
 backend produced any response at all, `Client.decide` raises
 `AllBackendsFailed(route, errors)`.
+
+A chain of the hosted Jev model, then OpenAI Decisions, then a local model is
+three backends in order. The chain below is illustrative, and was not run
+against the live APIs:
+
+```python
+from decide import Client
+from decide.backends import load
+
+client = Client(
+    [
+        load("typesafe", api_key="..."),
+        load("openai_decisions", api_key="..."),
+        load("laya_mlx"),
+    ]
+)
+```
 
 Route strings you will see in `meta.route`:
 
@@ -487,13 +508,14 @@ decide backends
 ```
 
 ```text
-NAME          INSTALLED  CONFIGURED  INSTALL
-typesafe      yes        no
-openrouter    yes        no
-laya          yes        default
-laya_mlx      yes        default
-crossencoder  yes        n/a
-llm           yes        no
+NAME              INSTALLED  CONFIGURED  INSTALL
+typesafe          yes        no
+openrouter        yes        no
+openai_decisions  yes        no
+laya              yes        default
+laya_mlx          yes        default
+crossencoder      yes        n/a
+llm               yes        no
 ```
 
 Every backend with `INSTALLED` `no` gets an `INSTALL` column naming the
@@ -510,7 +532,7 @@ runs the HTTP server described above.
 
 Every probability in a `ChoiceAnswer`, `ScoreAnswer` or `NoulAnswer` is
 whatever the backend reported; `decide` does not calibrate, smooth or
-verify it. What that means differs by backend: `typesafe`, `openrouter` and
+verify it. What that means differs by backend: `typesafe`, `openrouter`, `openai_decisions` and
 `laya`/`laya_mlx` are purpose-built decision models, but their outputs are
 still self-reported by the model and not audited by this library. The
 `crossencoder` backend turns a relevance reranker's raw logits into a

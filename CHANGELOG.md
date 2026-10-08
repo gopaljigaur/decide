@@ -3,6 +3,10 @@
 ## 0.2.2 (2026-10-08)
 
 - Add `decide.compat`, with `TypeSafeClient` and `AsyncTypeSafeClient` as drop-in replacements for the typesafe-sdk clients that accept `fallback=` and `gate=` and return the SDK's `SystemOneResponse` plus a `.decide` route record.
+- Raise the vendor exceptions from `decide.compat`: a failed hosted call raises the matching `TypeSafeAPIError` subclass (`TypeSafeInternalServerError`, `TypeSafeAuthenticationError`, `TypeSafeAPIConnectionError` and so on), so existing `except` clauses keep catching. With a fallback and every tier failing, the error is both a `TypeSafeError` and an `AllBackendsFailed`.
+- Support `retry=` (a `typesafe_sdk.RetryPolicy`) in `decide.compat` for the hosted tier; `http_client=` still raises `NotImplementedError`.
+- Add `BackendError.status`, `body` and `headers`, set for HTTP failures.
+- Add the `openai_decisions` backend for the OpenAI Decisions API (public beta), auto-selected from `OPENAI_API_KEY` unless `DECIDE_OPENAI_DECISIONS=0`, with `DECIDE_OPENAI_DECISIONS_MODEL` to choose the model.
 
 ## 0.2.1 (2026-09-23)
 

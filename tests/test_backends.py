@@ -15,6 +15,7 @@ def test_available_returns_all_registered_backends():
     assert set(REGISTRY.keys()) == {
         "typesafe",
         "openrouter",
+        "openai_decisions",
         "laya",
         "laya_mlx",
         "crossencoder",
