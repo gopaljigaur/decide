@@ -9,10 +9,10 @@ from decide.errors import ConfigError
 REGISTRY: dict[str, str] = {
     "typesafe": "decide.backends.typesafe:TypeSafeBackend",
     "openrouter": "decide.backends.openrouter:OpenRouterBackend",
+    "openai_decisions": "decide.backends.openai_decisions:OpenAIDecisionsBackend",
     "laya": "decide.backends.laya:LayaBackend",
     "laya_mlx": "decide.backends.laya_mlx:LayaMLXBackend",
     "crossencoder": "decide.backends.crossencoder:CrossEncoderBackend",
-    "openai_decisions": "decide.backends.openai_decisions:OpenAIDecisionsBackend",
     "llm": "decide.backends.llm:LLMBackend",
 }
 
