@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 (2026-10-08)
+
+- Add `decide.compat`, with `TypeSafeClient` and `AsyncTypeSafeClient` as drop-in replacements for the typesafe-sdk clients that accept `fallback=` and `gate=` and return the SDK's `SystemOneResponse` plus a `.decide` route record.
+
 ## 0.2.1 (2026-09-23)
 
 - Remove internal development notes from the repository and the source distribution.

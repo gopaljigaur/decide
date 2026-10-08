@@ -19,6 +19,55 @@ so this server isn't the reason to reach for `decide` if you only run laya
 - its purpose is chaining several backends (local and hosted) behind one
 TypeSafe-compatible endpoint.
 
+## Already using typesafe-sdk?
+
+Swap the import. Your questions, your `system_one` calls and the response
+object stay the same, and with no other change the hosted API is the only
+backend, exactly as before.
+
+```python
+from decide import TypeSafeClient  # was: from typesafe_sdk import TypeSafeClient
+```
+
+Add `fallback=` and the call keeps answering when the hosted API does not.
+Here the hosted tier is a transport that always returns 503, so the local
+model takes over:
+
+```python
+import httpx
+from decide import TypeSafeClient
+from typesafe_sdk import Choice
+
+hosted_down = httpx.MockTransport(lambda request: httpx.Response(503, text="down"))
+client = TypeSafeClient(api_key="sk-demo", transport=hosted_down, fallback=["laya_mlx"])
+result = client.system_one(
+    "I was charged twice for the same order, please refund the duplicate.",
+    {
+        "team": Choice(
+            instructions="Which team owns this?", criteria={"billing": None, "engineering": None}
+        )
+    },
+)
+print(result.choices["team"].choice, round(result.choices["team"].confidence, 3))
+print(result.decide.backend, result.decide.model)
+print(result.decide.route)
+```
+
+```
+billing 0.99
+laya_mlx aac6fef/laya-multilingual-mlx
+['typesafe:error', 'laya_mlx:ok']
+```
+
+The result is a subclass of the SDK's own `SystemOneResponse`, so existing code
+that reads `answers`, `choices` or `usage` keeps working; `result.decide` adds
+the backend, model, latency and route. Questions can be the SDK's `Choice`,
+`Score` and `Noul`, decide's own, or a mix. `typesafe-sdk` is not a dependency
+of `pydecide`; install it yourself to use this layer. `AsyncTypeSafeClient`
+works the same way. Not supported yet: `response_model=`, `retry=`,
+`http_client=`, and per-call `extra_headers=`, `extra_body=` and `timeout=`
+(each raises `NotImplementedError`).
+
 ## Install
 
 ```bash
