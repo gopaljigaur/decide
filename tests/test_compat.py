@@ -129,12 +129,6 @@ def test_hosted_failure_falls_through_to_local_backend():
     assert len(local.calls) == 1
 
 
-def test_hosted_failure_without_fallback_raises():
-    with pytest.raises(decide.AllBackendsFailed) as exc:
-        _client(_down).system_one("x", VENDOR_QUESTIONS)
-    assert exc.value.route == ["typesafe:error"]
-
-
 def test_gate_sends_low_confidence_hosted_answer_to_fallback():
     local = FakeBackend(name="local", confidence=0.99)
     only_team = {**OK, "answers": {"team": OK["answers"]["team"]}}
@@ -212,10 +206,9 @@ def test_unsupported_per_call_options_are_loud(kw):
         _client().system_one("x", VENDOR_QUESTIONS, **kw)
 
 
-@pytest.mark.parametrize("kw", [{"retry": object()}, {"http_client": object()}])
-def test_unsupported_constructor_options_are_loud(kw):
-    with pytest.raises(NotImplementedError, match=next(iter(kw))):
-        TypeSafeClient(api_key="k", **kw)
+def test_http_client_constructor_option_is_loud():
+    with pytest.raises(NotImplementedError, match="http_client"):
+        TypeSafeClient(api_key="k", http_client=object())
 
 
 def test_constructor_headers_model_base_url_and_env_key(monkeypatch):
@@ -328,3 +321,229 @@ def test_transport_failure_is_routed_to_fallback():
 
     r = _client(boom, fallback=[FakeBackend(name="local")]).system_one("x", VENDOR_QUESTIONS)
     assert r.decide.route == ["typesafe:error", "local:ok"]
+
+
+def _status(code, body=None, headers=None):
+    return lambda request: httpx.Response(code, json=body or {"error": "nope"}, headers=headers)
+
+
+@pytest.mark.parametrize(
+    ("code", "error"),
+    [
+        (503, "TypeSafeInternalServerError"),
+        (500, "TypeSafeInternalServerError"),
+        (401, "TypeSafeAuthenticationError"),
+        (403, "TypeSafePermissionDeniedError"),
+        (429, "TypeSafeRateLimitError"),
+        (400, "TypeSafeBadRequestError"),
+        (404, "TypeSafeNotFoundError"),
+        (422, "TypeSafeUnprocessableEntityError"),
+        (418, "TypeSafeAPIError"),
+    ],
+)
+def test_hosted_only_http_failure_raises_vendor_error(code, error):
+    with pytest.raises(getattr(sdk, error)) as exc:
+        _client(_status(code, headers={"x-typesafe-request-id": "r1"})).system_one(
+            "x", VENDOR_QUESTIONS
+        )
+    assert type(exc.value) is getattr(sdk, error)
+    assert isinstance(exc.value, sdk.TypeSafeAPIError | sdk.TypeSafeError)
+    assert exc.value.status == code
+    assert exc.value.body == {"error": "nope"}
+    assert exc.value.request_id == "r1"
+    assert isinstance(exc.value.__cause__, decide.BackendError)
+
+
+def test_hosted_only_transport_failure_raises_connection_error():
+    def boom(request):
+        raise httpx.ConnectError("no route", request=request)
+
+    with pytest.raises(sdk.TypeSafeAPIConnectionError) as exc:
+        _client(boom).system_one("x", VENDOR_QUESTIONS)
+    assert type(exc.value) is sdk.TypeSafeAPIConnectionError
+    assert isinstance(exc.value, sdk.TypeSafeError)
+
+
+def test_hosted_only_timeout_raises_timeout_error():
+    def slow(request):
+        raise httpx.ReadTimeout("slow", request=request)
+
+    with pytest.raises(sdk.TypeSafeAPITimeoutError):
+        _client(slow, timeout=3).system_one("x", VENDOR_QUESTIONS)
+
+
+def test_hosted_only_bad_payload_raises_vendor_error():
+    with pytest.raises(sdk.TypeSafeError):
+        _client(lambda r: httpx.Response(200, json={"nope": 1})).system_one("x", VENDOR_QUESTIONS)
+
+
+def test_all_tiers_failing_raises_both_vendor_and_decide_error():
+    local = FakeBackend(name="local", fail=decide.BackendError("local", "broken"))
+    with pytest.raises(sdk.TypeSafeError) as exc:
+        _client(_down, fallback=[local]).system_one("x", VENDOR_QUESTIONS)
+    err = exc.value
+    assert isinstance(err, decide.AllBackendsFailed)
+    assert isinstance(err, sdk.TypeSafeInternalServerError)
+    assert err.route == ["typesafe:error", "local:error"]
+    assert len(err.errors) == 2 and err.partial == {} and err.failed == {}
+    assert isinstance(err.__cause__, sdk.TypeSafeInternalServerError)
+    assert err.__cause__.status == 503
+
+
+def test_all_tiers_failing_is_caught_by_either_handler():
+    local = FakeBackend(name="local", fail=decide.BackendError("local", "broken"))
+    for kind in (sdk.TypeSafeError, sdk.TypeSafeAPIError, decide.AllBackendsFailed):
+        with pytest.raises(kind):
+            _client(_down, fallback=[local]).system_one("x", VENDOR_QUESTIONS)
+
+
+def test_fallback_that_succeeds_does_not_raise():
+    r = _client(_down, fallback=[FakeBackend(name="local")]).system_one("x", VENDOR_QUESTIONS)
+    assert r.decide.backend == "local"
+
+
+async def test_async_hosted_only_failure_raises_vendor_error():
+    c = AsyncTypeSafeClient(api_key="sk-test", transport=httpx.MockTransport(_down))
+    with pytest.raises(sdk.TypeSafeInternalServerError):
+        await c.system_one("x", VENDOR_QUESTIONS)
+    await c.aclose()
+
+
+async def test_async_all_tiers_failing_raises_both():
+    local = FakeBackend(name="local", fail=decide.BackendError("local", "broken"))
+    c = AsyncTypeSafeClient(
+        api_key="sk-test", transport=httpx.MockTransport(_down), fallback=[local]
+    )
+    with pytest.raises(sdk.TypeSafeError) as exc:
+        await c.system_one("x", VENDOR_QUESTIONS)
+    assert isinstance(exc.value, decide.AllBackendsFailed)
+    assert exc.value.route == ["typesafe:error", "local:error"]
+    await c.aclose()
+
+
+def test_backend_error_keeps_its_constructor_and_status_attributes():
+    err = decide.BackendError("b", "m")
+    assert (err.status, err.body, err.headers) == (None, None, None)
+    assert str(err) == "b: m"
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    calls: list[float] = []
+    monkeypatch.setattr("decide.compat.time.sleep", calls.append)
+
+    async def fake(delay):
+        calls.append(delay)
+
+    monkeypatch.setattr("decide.compat.asyncio.sleep", fake)
+    return calls
+
+
+def _flaky(failures, code=503):
+    state = {"n": 0}
+
+    def handler(request):
+        state["n"] += 1
+        if state["n"] <= failures:
+            return httpx.Response(code, text="down")
+        return httpx.Response(200, json=OK)
+
+    handler.state = state
+    return handler
+
+
+def test_retry_recovers_before_the_chain_moves_on(sleeps):
+    handler = _flaky(2)
+    local = FakeBackend(name="local")
+    policy = sdk.RetryPolicy(max_retries=2, backoff_jitter=0)
+    r = _client(handler, retry=policy, fallback=[local]).system_one("x", VENDOR_QUESTIONS)
+    assert r.decide.route == ["typesafe:ok"]
+    assert handler.state["n"] == 3 and local.calls == []
+    assert sleeps == [0.5, 1.0]
+
+
+def test_retry_exhausted_then_raises_last_error(sleeps):
+    handler = _flaky(99)
+    policy = sdk.RetryPolicy(max_retries=3, backoff_initial=1.0, backoff_max=3.0, backoff_jitter=0)
+    with pytest.raises(sdk.TypeSafeInternalServerError):
+        _client(handler, retry=policy).system_one("x", VENDOR_QUESTIONS)
+    assert handler.state["n"] == 4
+    assert sleeps == [1.0, 2.0, 3.0]
+
+
+def test_retry_exhausted_moves_on_to_fallback(sleeps):
+    handler = _flaky(99)
+    local = FakeBackend(name="local")
+    policy = sdk.RetryPolicy(max_retries=1, backoff_jitter=0)
+    r = _client(handler, retry=policy, fallback=[local]).system_one("x", VENDOR_QUESTIONS)
+    assert r.decide.route == ["typesafe:error", "local:ok"]
+    assert handler.state["n"] == 2
+
+
+def test_retry_only_covers_http_statuses_in_the_policy(sleeps):
+    handler = _flaky(99, code=401)
+    with pytest.raises(sdk.TypeSafeAuthenticationError):
+        _client(handler, retry=sdk.RetryPolicy(max_retries=3)).system_one("x", VENDOR_QUESTIONS)
+    assert handler.state["n"] == 1 and sleeps == []
+    handler = _flaky(99, code=418)
+    policy = sdk.RetryPolicy(max_retries=1, http_statuses={418}, backoff_jitter=0)
+    with pytest.raises(sdk.TypeSafeAPIError):
+        _client(handler, retry=policy).system_one("x", VENDOR_QUESTIONS)
+    assert handler.state["n"] == 2
+
+
+def test_retry_covers_transport_failures(sleeps):
+    state = {"n": 0}
+
+    def handler(request):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise httpx.ConnectError("no route", request=request)
+        return httpx.Response(200, json=OK)
+
+    policy = sdk.RetryPolicy(max_retries=1, backoff_jitter=0)
+    assert _client(handler, retry=policy).system_one("x", VENDOR_QUESTIONS).decide.route == [
+        "typesafe:ok"
+    ]
+    off = sdk.RetryPolicy(max_retries=1, api_connection_error=False)
+    state["n"] = 0
+    with pytest.raises(sdk.TypeSafeAPIConnectionError):
+        _client(handler, retry=off).system_one("x", VENDOR_QUESTIONS)
+    assert state["n"] == 1
+
+
+def test_retry_jitter_only_shortens_the_delay(sleeps):
+    handler = _flaky(1)
+    policy = sdk.RetryPolicy(max_retries=1, backoff_initial=1.0, backoff_jitter=0.5)
+    _client(handler, retry=policy).system_one("x", VENDOR_QUESTIONS)
+    assert 0.5 <= sleeps[0] <= 1.0
+
+
+def test_no_retry_policy_means_one_attempt(sleeps):
+    handler = _flaky(99)
+    with pytest.raises(sdk.TypeSafeInternalServerError):
+        _client(handler).system_one("x", VENDOR_QUESTIONS)
+    assert handler.state["n"] == 1 and sleeps == []
+
+
+def test_retry_with_max_retries_zero_is_one_attempt(sleeps):
+    handler = _flaky(99)
+    with pytest.raises(sdk.TypeSafeInternalServerError):
+        _client(handler, retry=sdk.RetryPolicy(max_retries=0)).system_one("x", VENDOR_QUESTIONS)
+    assert handler.state["n"] == 1
+
+
+async def test_async_retry_uses_async_sleep(sleeps):
+    handler = _flaky(1)
+    policy = sdk.RetryPolicy(max_retries=1, backoff_jitter=0)
+    c = AsyncTypeSafeClient(api_key="sk-test", transport=httpx.MockTransport(handler), retry=policy)
+    r = await c.system_one("x", VENDOR_QUESTIONS)
+    assert r.decide.route == ["typesafe:ok"] and sleeps == [0.5]
+    await c.aclose()
+
+
+def test_retry_wrapper_keeps_close_working():
+    policy = sdk.RetryPolicy(max_retries=1)
+    with _client(retry=policy) as c:
+        c.system_one("x", VENDOR_QUESTIONS)
+    assert c._client.backends[0]._client is None

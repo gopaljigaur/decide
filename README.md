@@ -64,9 +64,21 @@ that reads `answers`, `choices` or `usage` keeps working; `result.decide` adds
 the backend, model, latency and route. Questions can be the SDK's `Choice`,
 `Score` and `Noul`, decide's own, or a mix. `typesafe-sdk` is not a dependency
 of `pydecide`; install it yourself to use this layer. `AsyncTypeSafeClient`
-works the same way. Not supported yet: `response_model=`, `retry=`,
-`http_client=`, and per-call `extra_headers=`, `extra_body=` and `timeout=`
-(each raises `NotImplementedError`).
+works the same way.
+
+Errors keep the vendor types: a failed hosted call raises the matching
+`TypeSafeAPIError` subclass (`TypeSafeInternalServerError` for a 503,
+`TypeSafeAPIConnectionError` for a transport failure, and so on), so existing
+`except` clauses still catch it. With a `fallback` and every tier failing, the
+error is both a `TypeSafeError` and a `decide.AllBackendsFailed`.
+
+`retry=` takes a `typesafe_sdk.RetryPolicy` and retries the hosted tier before
+the chain moves on. It honours `max_retries`, `backoff_initial`, `backoff_max`,
+`backoff_jitter`, `http_statuses`, `api_connection_error` and
+`api_timeout_error`; it ignores `respect_retry_after`, `exceptions`,
+`predicate` and `timeout`. Not supported yet: `response_model=`, `http_client=`,
+and per-call `retry=`, `extra_headers=`, `extra_body=` and `timeout=` (each
+raises `NotImplementedError`).
 
 ## Install
 

@@ -7,7 +7,10 @@ imported lazily so `import decide` never requires it.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import random
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,9 +21,15 @@ from decide.backends import load as load_backend
 from decide.backends.base import Backend
 from decide.backends.typesafe import TypeSafeBackend
 from decide.client import AsyncClient, Client
-from decide.errors import ConfigError
+from decide.errors import (
+    AllBackendsFailed,
+    BackendConnectionError,
+    BackendError,
+    BadResponseError,
+    ConfigError,
+)
 from decide.gate import Gate
-from decide.types import Choice, Content, Noul, Question, Response, Score
+from decide.types import Choice, Content, Noul, Question, Request, Response, Score
 from decide.wire import _parse_wire_question, to_wire_answers
 
 _API_KEY_ENV = "TYPESAFE_API_KEY"
@@ -124,6 +133,140 @@ def _reject_unsupported(**options: Any) -> None:
             raise NotImplementedError(f"{name}= is not supported by decide.compat yet")
 
 
+def _vendor_error(exc: BackendError, hosted: TypeSafeBackend) -> Exception:
+    """Map a backend failure to the vendor exception a `typesafe_sdk` call would have raised."""
+    sdk = _sdk()
+    endpoint = f"POST {hosted.base_url}{hosted.PATH}"
+    if isinstance(exc, BackendConnectionError):
+        if isinstance(exc.cause, httpx.TimeoutException):
+            return sdk.TypeSafeAPITimeoutError(hosted.timeout)
+        return sdk.TypeSafeAPIConnectionError(exc.message)
+    try:
+        import httpx2
+
+        headers: Any = httpx2.Headers(exc.headers or {})
+    except ImportError:
+        headers = dict(exc.headers or {})
+    if isinstance(exc, BadResponseError):
+        return sdk.TypeSafeAPIResponseValidationError(
+            200, exc.body, headers, "answers", endpoint=endpoint
+        )
+    status = exc.status or 0
+    cls: type[Exception]
+    if status == 401:
+        cls = sdk.TypeSafeAuthenticationError
+    elif status == 403:
+        cls = sdk.TypeSafePermissionDeniedError
+    elif status == 429:
+        cls = sdk.TypeSafeRateLimitError
+    elif status == 400:
+        cls = sdk.TypeSafeBadRequestError
+    elif status == 404:
+        cls = sdk.TypeSafeNotFoundError
+    elif status == 422:
+        cls = sdk.TypeSafeUnprocessableEntityError
+    elif status >= 500:
+        cls = sdk.TypeSafeInternalServerError
+    else:
+        cls = sdk.TypeSafeAPIError
+    return cls(status, exc.body, headers, endpoint=endpoint)
+
+
+_failure_classes: dict[type, type] = {}
+
+
+def _failure_class(vendor_cls: type) -> type:
+    """A class that is both `AllBackendsFailed` and the vendor error, built per vendor class."""
+    cls = _failure_classes.get(vendor_cls)
+    if cls is None:
+
+        def __init__(self: Any, failed: AllBackendsFailed, cause: Exception) -> None:
+            # The vendor constructors take HTTP arguments, so copy their state instead.
+            Exception.__init__(self, str(failed))
+            self.__dict__.update(cause.__dict__)
+            self.route = failed.route
+            self.errors = failed.errors
+            self.partial = failed.partial
+            self.failed = failed.failed
+
+        def __str__(self: Any) -> str:
+            return f"all backends failed: {self.route}; hosted: {vendor_cls.__str__(self)}"
+
+        cls = type(
+            "AllBackendsFailed",
+            (AllBackendsFailed, vendor_cls),
+            {"__init__": __init__, "__str__": __str__, "__module__": __name__},
+        )
+        _failure_classes[vendor_cls] = cls
+    return cls
+
+
+def _translate(
+    exc: BackendError | AllBackendsFailed, hosted: TypeSafeBackend, chained: bool
+) -> Exception:
+    """Build the exception to raise for a failed call, keeping vendor `except` clauses working."""
+    if isinstance(exc, AllBackendsFailed):
+        cause = _vendor_error(exc.errors[0], hosted) if exc.errors else None
+        if not chained and cause is not None:
+            cause.__cause__ = exc.errors[0]
+            return cause
+        if cause is None:
+            cause = _sdk().TypeSafeAPIError(0, None, {})
+        combined = _failure_class(type(cause))(exc, cause)
+        combined.__cause__ = cause
+        return combined
+    vendor = _vendor_error(exc, hosted)
+    vendor.__cause__ = exc
+    return vendor
+
+
+class _RetryingBackend:
+    """Retries the hosted tier per a vendor `RetryPolicy` before the chain moves on."""
+
+    def __init__(self, inner: TypeSafeBackend, policy: Any) -> None:
+        self._inner = inner
+        self._policy = policy
+        self.name = inner.name
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def _delay(self, attempt: int) -> float:
+        p = self._policy
+        delay = min(p.backoff_max, p.backoff_initial * 2 ** (attempt - 1))
+        return delay - delay * p.backoff_jitter * random.random()
+
+    def _retryable(self, exc: BackendError) -> bool:
+        p = self._policy
+        if isinstance(exc, BackendConnectionError):
+            if isinstance(exc.cause, httpx.TimeoutException):
+                return bool(p.api_timeout_error)
+            return bool(p.api_connection_error)
+        return exc.status in p.http_statuses
+
+    def decide(self, request: Request) -> Response:
+        attempt = 0
+        while True:
+            try:
+                return self._inner.decide(request)
+            except BackendError as exc:
+                attempt += 1
+                if attempt > self._policy.max_retries or not self._retryable(exc):
+                    raise
+                time.sleep(self._delay(attempt))
+
+    async def adecide(self, request: Request) -> Response:
+        attempt = 0
+        while True:
+            try:
+                return await self._inner.adecide(request)
+            except BackendError as exc:
+                attempt += 1
+                if attempt > self._policy.max_retries or not self._retryable(exc):
+                    raise
+                await asyncio.sleep(self._delay(attempt))
+
+
 def _build_chain(
     *,
     api_key: str | None,
@@ -135,9 +278,11 @@ def _build_chain(
     http_client: Any,
     base_url: str | None,
     fallback: Sequence[Backend | str] | None,
-) -> list[Backend]:
-    _sdk()
-    _reject_unsupported(retry=retry, http_client=http_client)
+) -> tuple[list[Backend], TypeSafeBackend]:
+    sdk = _sdk()
+    _reject_unsupported(http_client=http_client)
+    if retry is not None and not isinstance(retry, sdk.RetryPolicy):
+        raise TypeError("retry= must be a typesafe_sdk.RetryPolicy")
     key = api_key or os.environ.get(_API_KEY_ENV)
     if not key:
         raise ConfigError(f"missing api_key: pass api_key= or set {_API_KEY_ENV}")
@@ -149,8 +294,9 @@ def _build_chain(
     hosted = TypeSafeBackend(
         key, base_url=base_url, model=model, headers=headers, transport=transport, **kwargs
     )
+    first: Any = hosted if retry is None else _RetryingBackend(hosted, retry)
     extra = [load_backend(b) if isinstance(b, str) else b for b in fallback or ()]
-    return [hosted, *extra]
+    return [first, *extra], hosted
 
 
 def _prepare(questions: Mapping[str, Any], per_call: Mapping[str, Any]) -> dict[str, Question]:
@@ -165,7 +311,17 @@ _RESPONSE_MODEL_MSG = (
 
 
 class TypeSafeClient:
-    """Same constructor and `system_one` as `typesafe_sdk.TypeSafeClient`, with fallback."""
+    """Same constructor and `system_one` as `typesafe_sdk.TypeSafeClient`, with fallback.
+
+    Hosted failures raise the vendor exceptions (`TypeSafeAPIError` and friends). When a
+    fallback is configured and every tier fails, the error is also an `AllBackendsFailed`.
+
+    `retry=` takes a `typesafe_sdk.RetryPolicy` and retries the hosted tier before the chain
+    moves on. It honours `max_retries`, `backoff_initial`, `backoff_max`, `backoff_jitter`,
+    `http_statuses`, `api_connection_error` and `api_timeout_error`. It ignores
+    `respect_retry_after`, `exceptions`, `predicate` and `timeout`. Without `retry=` there are
+    no retries. `http_client=` is not supported.
+    """
 
     def __init__(
         self,
@@ -181,7 +337,7 @@ class TypeSafeClient:
         fallback: Sequence[Backend | str] | None = None,
         gate: Gate | None = None,
     ) -> None:
-        backends = _build_chain(
+        backends, self._hosted = _build_chain(
             api_key=api_key,
             model=model,
             retry=retry,
@@ -217,7 +373,12 @@ class TypeSafeClient:
                 "extra_body": extra_body,
             },
         )
-        return _to_response(self._client.decide(state, converted, model=model))
+        try:
+            response = self._client.decide(state, converted, model=model)
+        except (BackendError, AllBackendsFailed) as exc:
+            err = _translate(exc, self._hosted, len(self._client.backends) > 1)
+            raise err from err.__cause__
+        return _to_response(response)
 
     def close(self) -> None:
         self._client.close()
@@ -246,7 +407,7 @@ class AsyncTypeSafeClient:
         fallback: Sequence[Backend | str] | None = None,
         gate: Gate | None = None,
     ) -> None:
-        backends = _build_chain(
+        backends, self._hosted = _build_chain(
             api_key=api_key,
             model=model,
             retry=retry,
@@ -282,7 +443,12 @@ class AsyncTypeSafeClient:
                 "extra_body": extra_body,
             },
         )
-        return _to_response(await self._client.decide(state, converted, model=model))
+        try:
+            response = await self._client.decide(state, converted, model=model)
+        except (BackendError, AllBackendsFailed) as exc:
+            err = _translate(exc, self._hosted, len(self._client.backends) > 1)
+            raise err from err.__cause__
+        return _to_response(response)
 
     async def aclose(self) -> None:
         await self._client.aclose()
