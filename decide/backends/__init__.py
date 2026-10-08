@@ -9,6 +9,7 @@ from decide.errors import ConfigError
 REGISTRY: dict[str, str] = {
     "typesafe": "decide.backends.typesafe:TypeSafeBackend",
     "openrouter": "decide.backends.openrouter:OpenRouterBackend",
+    "openai_decisions": "decide.backends.openai_decisions:OpenAIDecisionsBackend",
     "laya": "decide.backends.laya:LayaBackend",
     "laya_mlx": "decide.backends.laya_mlx:LayaMLXBackend",
     "crossencoder": "decide.backends.crossencoder:CrossEncoderBackend",
@@ -19,6 +20,7 @@ REGISTRY: dict[str, str] = {
 _EXTRAS: dict[str, str | None] = {
     "typesafe": None,
     "openrouter": None,
+    "openai_decisions": None,
     "laya": "pydecide[laya]",
     "laya_mlx": "pydecide[mlx]",
     "crossencoder": "pydecide[st]",
@@ -29,6 +31,7 @@ _EXTRAS: dict[str, str | None] = {
 _REQUIRES: dict[str, str] = {
     "typesafe": "httpx",
     "openrouter": "httpx",
+    "openai_decisions": "httpx",
     "laya": "laya",
     "laya_mlx": "laya_mlx",
     "crossencoder": "sentence_transformers",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -26,12 +27,14 @@ class TypeSafeBackend(HttpClientMixin, BaseBackend):
         base_url: str | None = None,
         model: str | None = None,
         timeout: float = 30.0,
+        headers: Mapping[str, str] | None = None,
         transport: httpx.BaseTransport | httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.headers = dict(headers or {})
         self._transport = transport
         self._client: httpx.Client | None = None
         self._aclient: httpx.AsyncClient | None = None
@@ -41,7 +44,7 @@ class TypeSafeBackend(HttpClientMixin, BaseBackend):
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.api_key}"}
+        return {**self.headers, "Authorization": f"Bearer {self.api_key}"}
 
     def _resolved_model(self, request: Request) -> str:
         return request.model or self.model or self.DEFAULT_MODEL

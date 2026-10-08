@@ -474,6 +474,39 @@ def test_from_env_llm_kwargs_with_api_key_and_model(monkeypatch):
     assert captured["llm"] == {"api_key": "z", "model": "gpt-4o"}
 
 
+def test_from_env_openai_decisions_sits_between_openrouter_and_llm(monkeypatch):
+    import decide.client as mod
+
+    captured = {}
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
+    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
+    c = Client.from_env(
+        env={"TYPESAFE_API_KEY": "t", "OPENROUTER_API_KEY": "o", "OPENAI_API_KEY": "z"}
+    )
+    assert [b.name for b in c.backends] == ["typesafe", "openrouter", "openai_decisions", "llm"]
+    assert captured["openai_decisions"] == {"api_key": "z"}
+    assert captured["llm"] == {"api_key": "z", "model": "gpt-4o-mini"}
+
+
+def test_from_env_openai_decisions_model_and_opt_out(monkeypatch):
+    import decide.client as mod
+
+    captured = {}
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
+    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
+    Client.from_env(env={"OPENAI_API_KEY": "z", "DECIDE_OPENAI_DECISIONS_MODEL": "gpt-6-sol"})
+    assert captured["openai_decisions"] == {"api_key": "z", "model": "gpt-6-sol"}
+    captured.clear()
+    c = Client.from_env(env={"OPENAI_API_KEY": "z", "DECIDE_OPENAI_DECISIONS": "0"})
+    assert [b.name for b in c.backends] == ["llm"]
+    assert "openai_decisions" not in captured
+
+
+def test_from_env_openai_decisions_needs_the_key_when_named(monkeypatch):
+    with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
+        Client.from_env(env={"DECIDE_BACKENDS": "openai_decisions"})
+
+
 def test_from_env_laya_kwargs(monkeypatch):
     import decide.client as mod
 
@@ -552,6 +585,8 @@ _FROM_ENV_VARS = (
     "DECIDE_LLM_BASE_URL",
     "OPENAI_API_KEY",
     "DECIDE_LLM_MODEL",
+    "DECIDE_OPENAI_DECISIONS",
+    "DECIDE_OPENAI_DECISIONS_MODEL",
     "DECIDE_MIN_CONFIDENCE",
 )
 

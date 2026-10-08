@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from decide.types import Response
@@ -15,12 +16,28 @@ class ConfigError(DecideError):
 
 
 class BackendError(DecideError):
-    """Raised when a backend fails to produce a usable response."""
+    """Raised when a backend fails to produce a usable response.
 
-    def __init__(self, backend: str, message: str, cause: BaseException | None = None) -> None:
+    `status`, `body` and `headers` describe the HTTP response when the failure
+    came from one, and are `None` otherwise.
+    """
+
+    def __init__(
+        self,
+        backend: str,
+        message: str,
+        cause: BaseException | None = None,
+        *,
+        status: int | None = None,
+        body: Any = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
         self.backend = backend
         self.message = message
         self.cause = cause
+        self.status = status
+        self.body = body
+        self.headers = headers
         super().__init__(f"{backend}: {message}")
 
 

@@ -410,6 +410,14 @@ def _kwargs_for(name: str, env: Mapping[str, str]) -> dict[str, Any]:
         if "OPENROUTER_API_KEY" not in env:
             raise ConfigError("missing OPENROUTER_API_KEY for backend 'openrouter'")
         return {"api_key": env["OPENROUTER_API_KEY"]}
+    if name == "openai_decisions":
+        if "OPENAI_API_KEY" not in env:
+            raise ConfigError("missing OPENAI_API_KEY for backend 'openai_decisions'")
+        kwargs = {
+            "api_key": env["OPENAI_API_KEY"],
+            "model": env.get("DECIDE_OPENAI_DECISIONS_MODEL"),
+        }
+        return {k: v for k, v in kwargs.items() if v is not None}
     if name == "llm":
         kwargs = {
             "base_url": env.get("DECIDE_LLM_BASE_URL"),
@@ -470,6 +478,10 @@ def _resolve_env_backends(
     if "OPENROUTER_API_KEY" in env:
         names.append("openrouter")
         kwargs_by_name["openrouter"] = _kwargs_for("openrouter", env)
+
+    if "OPENAI_API_KEY" in env and env.get("DECIDE_OPENAI_DECISIONS") != "0":
+        names.append("openai_decisions")
+        kwargs_by_name["openai_decisions"] = _kwargs_for("openai_decisions", env)
 
     if "DECIDE_LLM_BASE_URL" in env or "OPENAI_API_KEY" in env:
         names.append("llm")

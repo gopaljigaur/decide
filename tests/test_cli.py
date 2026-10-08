@@ -294,6 +294,18 @@ def test_backends_lists_registry_names(capsys):
     assert "NAME" in out and "INSTALLED" in out and "CONFIGURED" in out and "INSTALL" in out
 
 
+def test_backends_openai_decisions_is_configured_by_openai_api_key(monkeypatch, capsys):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    cli.main(["backends"])
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("openai_decisions"))
+    assert line.split()[:3] == ["openai_decisions", "yes", "yes"]
+
+    monkeypatch.delenv("OPENAI_API_KEY")
+    cli.main(["backends"])
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("openai_decisions"))
+    assert line.split()[:3] == ["openai_decisions", "yes", "no"]
+
+
 def test_backends_crossencoder_is_configured_n_a(capsys):
     cli.main(["backends"])
 

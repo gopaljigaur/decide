@@ -87,13 +87,21 @@ class HttpClientMixin:
 def raise_for_status(backend: str, response: httpx.Response) -> None:
     """Raise the appropriate `BackendError` subclass for a non-2xx response.
 
-    No-op for a successful response. 401/403 -> `AuthError`, 429 ->
+    No-op for a successful response. The error carries the response's `status`,
+    `body` and `headers`. 401/403 -> `AuthError`, 429 ->
     `RateLimitError`, any other 4xx/5xx -> `BackendError` carrying a short
     excerpt of the response body.
     """
-    if response.status_code in (401, 403):
-        raise AuthError(backend, f"authentication failed (HTTP {response.status_code})")
-    if response.status_code == 429:
-        raise RateLimitError(backend, "rate limited (HTTP 429)")
-    if response.status_code >= 400:
-        raise BackendError(backend, f"HTTP {response.status_code}: {response.text[:200]}")
+    code = response.status_code
+    if code < 400:
+        return
+    try:
+        body: Any = response.json()
+    except ValueError:
+        body = response.text or None
+    detail = {"status": code, "body": body, "headers": dict(response.headers)}
+    if code in (401, 403):
+        raise AuthError(backend, f"authentication failed (HTTP {code})", **detail)
+    if code == 429:
+        raise RateLimitError(backend, "rate limited (HTTP 429)", **detail)
+    raise BackendError(backend, f"HTTP {code}: {response.text[:200]}", **detail)
