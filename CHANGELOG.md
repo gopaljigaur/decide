@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 (2026-10-13)
+
+- Fix `decide.__version__`, which 0.2.3 left reading `0.2.2`. A test now keeps it
+  in step with the version in `pyproject.toml`.
+
 ## 0.2.3 (2026-10-13)
 
 - Packaging metadata only, no code changes. The PyPI summary and keywords now

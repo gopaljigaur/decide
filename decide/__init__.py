@@ -25,7 +25,7 @@ from decide.types import (
     ScoreAnswer,
 )
 
-__version__ = "0.2.2"
+__version__ = "0.2.4"
 
 __all__ = [
     "AllBackendsFailed",
