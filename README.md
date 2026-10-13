@@ -528,6 +528,40 @@ the backend isn't installed at all.
 `decide serve --backends a,b --host 127.0.0.1 --port 8811 [--api-key TOKEN] [--min-confidence FLOAT]`
 runs the HTTP server described above.
 
+## Latency
+
+Measured on an Apple M4 (32 GB) with the `laya_mlx` backend on its default
+checkpoint, `aac6fef/laya-multilingual-mlx`, in process, after three warm-up
+requests. One `Client.decide` call, timed by `meta.latency_ms`, 20 samples:
+
+| Request | Median | Range |
+|---|---|---|
+| One Choice question | 8.6 ms | 7.6 to 14.2 ms |
+| Choice, Noul and Score in one call | 19.1 ms | 18.7 to 24.8 ms |
+
+Loading the model and answering the first request took 1,155 ms, once. A
+`decide` CLI invocation on the same machine takes 1.0 to 1.4 s of wall clock,
+nearly all of it interpreter startup and loading the model again, while the
+decision inside it still measures 26 to 30 ms. Measure in process if you are
+comparing against a hosted API.
+
+Your numbers will differ with the machine, the checkpoint and the length of
+the state, so measure before you rely on any of this. `--verbose` prints the
+backend, the route and the latency of the call:
+
+```bash
+decide ask "I was charged twice" --choice billing,engineering --verbose
+```
+
+```
+NAME    TYPE    ANSWER   PROBABILITIES
+choice  choice  billing  billing=0.96 engineering=0.04
+backend=laya_mlx route=laya_mlx:ok latency=47.1ms
+```
+
+That one is a cold call with no warm-up, which is why it is slower than the
+table above.
+
 ## What the probabilities mean
 
 Every probability in a `ChoiceAnswer`, `ScoreAnswer` or `NoulAnswer` is
@@ -547,7 +581,7 @@ accordingly, as a signal to gate and fall back on, not as ground truth.
 
 ## Status
 
-`pydecide` is at 0.2.0. The public API may still change before a 1.0
+`pydecide` is at 0.2.4. The public API may still change before a 1.0
 release.
 
 ## License
