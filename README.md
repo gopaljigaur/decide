@@ -15,8 +15,8 @@ cheap local model can back off to a hosted one only when it's unsure.
 The library also ships a small HTTP server (see
 [Server](#server-point-typesafes-sdk-at-a-local-model) below) that speaks
 TypeSafe's wire protocol. laya now ships its own `laya-serve` as of 0.3.7,
-so this server isn't the reason to reach for `decide` if you only run laya
-- its purpose is chaining several backends (local and hosted) behind one
+so this server isn't the reason to reach for `decide` if you only run laya.
+Its purpose is chaining several backends (local and hosted) behind one
 TypeSafe-compatible endpoint.
 
 ## Already using typesafe-sdk?
@@ -304,11 +304,11 @@ client = Client(
 
 Route strings you will see in `meta.route`:
 
-- `"<name>:ok"` - the backend answered and passed the gate.
-- `"<name>:error"` - the backend raised a `BackendError`.
-- `"<name>:low_confidence:<question>=<value><threshold>"` - the backend
+- `"<name>:ok"`: the backend answered and passed the gate.
+- `"<name>:error"`: the backend raised a `BackendError`.
+- `"<name>:low_confidence:<question>=<value><threshold>"`: the backend
   answered but at least one gated question fell below its threshold.
-- `"<name>:accepted_low_confidence"` - appended once, at the end of the
+- `"<name>:accepted_low_confidence"`: appended once, at the end of the
   route, when no backend passed the gate and the best low-confidence
   response was returned instead.
 

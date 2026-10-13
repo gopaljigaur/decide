@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.3 (2026-10-13)
+
+- Packaging metadata only, no code changes. The PyPI summary and keywords now
+  name the OpenAI Decisions backend, laya-mlx and the CrossEncoder reranker,
+  the classifiers declare the development status, audience and FastAPI, and
+  the project links include the changelog.
+- README: fixed a wrapped line that rendered as a stray list item, and replaced
+  four spaced hyphens with colons.
+
 ## 0.2.2 (2026-10-08)
 
 - Add `decide.compat`, with `TypeSafeClient` and `AsyncTypeSafeClient` as drop-in replacements for the typesafe-sdk clients that accept `fallback=` and `gate=` and return the SDK's `SystemOneResponse` plus a `.decide` route record.
@@ -23,7 +32,7 @@
 - `Gate` gained `per_type`, an optional `{"choice"/"score"/"noul":
   threshold}` mapping. Per question, the most specific threshold wins:
   `per_question`, then `per_type`, then `min_confidence`. No breaking
-  changes - `per_type` defaults to `None` and behavior is unchanged unless
+  changes: `per_type` defaults to `None` and behavior is unchanged unless
   it's set.
 - README: reframed the opening around the fallback chain, noted that laya
   now ships its own `laya-serve` server, and added a "Choosing a threshold"
