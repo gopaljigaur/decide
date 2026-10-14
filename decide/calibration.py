@@ -1,17 +1,7 @@
-"""Fit a gate's parameters on answers whose correct label you already know.
+"""Fit gate parameters on answers whose correct label you know.
 
-Two fitters, both pure Python so the core install stays dependency free:
-
-- `fit_temperature` rescales a backend's probabilities so a stated confidence
-  means what it says. A backend that reports 0.9 and is right 70% of the time
-  is overconfident, and a threshold set on those numbers escalates the wrong
-  questions.
-- `fit_conformal_quantile` finds the cut that makes a prediction set cover the
-  true label at a rate you choose, which turns "is the model sure" into a set
-  size you can act on.
-
-Both take the same rows: the probabilities a backend reported, and the index of
-the label that turned out to be right.
+Both fitters take the same rows: the probabilities a backend reported, and the
+index of the label that was right. Pure Python, so core install gains nothing.
 """
 
 from __future__ import annotations
@@ -37,10 +27,8 @@ _MAX_TEMPERATURE = 10.0
 def temper(probabilities: Sequence[float], temperature: float) -> list[float]:
     """Rescale `probabilities` by `temperature` and renormalize.
 
-    Temperatures above 1 flatten the distribution, below 1 sharpen it, and
-    exactly 1 returns the input unchanged. Backends hand us probabilities
-    rather than logits, so this treats `log(p)` as the logit, which is the
-    usual recovery and is exact whenever the probabilities came from a softmax.
+    Backends hand us probabilities, not logits, so `log(p)` stands in for the
+    logit. That is exact whenever the probabilities came from a softmax.
     """
     if temperature <= 0:
         raise ValueError(f"temperature must be positive, got {temperature}")
@@ -66,14 +54,10 @@ def fit_temperature(
     *,
     tolerance: float = 1e-4,
 ) -> float:
-    """Return the temperature that best explains `rows`, by negative log likelihood.
+    """The temperature that best explains `rows`, by negative log likelihood.
 
-    `rows` pairs the probabilities a backend reported with the index of the
-    label that was right. The search is a ternary search over a single
-    parameter, which is enough because the objective is unimodal in
-    temperature.
-
-    A temperature above 1 means the backend was overconfident on this data.
+    Above 1 means the backend was overconfident on this data. Ternary search,
+    which suffices because the objective is unimodal in temperature.
     """
     if not rows:
         raise ValueError("fit_temperature needs at least one row")
@@ -97,16 +81,11 @@ def fit_conformal_quantile(
     *,
     alpha: float = 0.1,
 ) -> float:
-    """Return the split-conformal cut for `1 - alpha` coverage of the true label.
+    """The split-conformal cut for `1 - alpha` coverage of the true label.
 
-    Uses the least-ambiguous-classifier score, `1 - p(true label)`, and the
-    finite-sample quantile `ceil((n + 1)(1 - alpha)) / n`. A prediction set is
-    then every label whose probability is at least `1 - quantile`, and that set
-    contains the true label about `1 - alpha` of the time on data drawn like
-    the calibration rows.
-
-    The guarantee is exchangeability, not magic: it holds for inputs that look
-    like the ones you fitted on, and says nothing about a different workload.
+    Scores `1 - p(true)` at the `ceil((n + 1)(1 - alpha)) / n` quantile; the
+    prediction set is every label at or above `1 - quantile`. Holds for inputs
+    drawn like the calibration rows, and says nothing about another workload.
     """
     if not rows:
         raise ValueError("fit_conformal_quantile needs at least one row")
@@ -123,12 +102,7 @@ def fit_conformal_quantile(
 
 @dataclass(frozen=True)
 class Calibration:
-    """Fitted gate parameters, per question name.
-
-    `temperatures` rescales probabilities before a confidence is read off them.
-    `quantiles` is the conformal cut per question. Questions missing from either
-    mapping fall back to the defaults, which change nothing.
-    """
+    """Fitted gate parameters per question. Missing names fall back to neutral defaults."""
 
     temperatures: dict[str, float] = field(default_factory=dict)
     quantiles: dict[str, float] = field(default_factory=dict)

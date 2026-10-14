@@ -98,10 +98,8 @@ def _ollama(model: str) -> Callable[[], Client]:
     def build() -> Client:
         from decide.backends.llm import LLMBackend
 
-        # 256 tokens is far more than a correct typed answer needs, so the cap only
-        # truncates a model that has lost the format and is generating without end.
-        # llama3.2:1b does exactly that on this task, and uncapped it spends the whole
-        # timeout on a single row.
+        # 256 is well above a correct typed answer, so the cap only truncates a model
+        # that has lost the format. Uncapped, llama3.2:1b burns the timeout per row.
         return Client(
             [
                 LLMBackend(

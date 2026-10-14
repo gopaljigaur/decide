@@ -1,27 +1,7 @@
-"""Alternatives to thresholding the top probability.
+"""Gating policies that read more than the winning probability.
 
-`Gate` escalates when the winning probability falls below a number you pick.
-That is the cascade baseline, and the published work on cascades keeps finding
-the same two weaknesses in it: the probability it reads is usually not
-calibrated, so the number you pick does not mean what it looks like, and the
-top probability alone throws away the shape of the rest of the distribution.
-
-Each policy here is a drop-in for `Gate` in `Client(policy=...)`:
-
-- `CalibratedGate` rescales the probabilities first, so a threshold of 0.9 is
-  closer to being right 90% of the time. Fit the temperature with
-  `decide.calibration.fit_temperature`.
-- `EntropyGate` reads the whole distribution instead of its peak, so a close
-  three-way split escalates even when the winner clears a threshold.
-- `MarginGate` reads the gap between first and second place, which is the
-  quantity that decides whether the winner would change.
-- `ConformalGate` escalates whenever more than one candidate survives the cut
-  fitted by `decide.calibration.fit_conformal_quantile`, which ties escalation
-  to a coverage rate you choose instead of a threshold you guess.
-
-Score answers are never gated by any of these, for the same reason `Gate`
-skips them: an expected value over ordered levels has no single confidence
-behind it.
+Each is a drop-in for `Gate` in `Client(policy=...)`. Score answers are never
+gated, for the reason `Gate` documents. See the README for when to pick which.
 """
 
 from __future__ import annotations
@@ -51,10 +31,7 @@ _TYPE_NAMES: Mapping[type, str] = {
 
 @runtime_checkable
 class Policy(Protocol):
-    """What `Client` needs from a gating policy.
-
-    `Gate` and every policy in this module satisfy it.
-    """
+    """What `Client` needs from a gating policy."""
 
     on_error: Literal["next", "raise"]
 
@@ -99,10 +76,7 @@ def _check_per_type(per_type: Mapping[str, float] | None, policy: str) -> None:
 
 
 def _normalized_entropy(probabilities: list[float]) -> float:
-    """Shannon entropy over `probabilities`, divided by the entropy of a flat one.
-
-    0.0 means all the mass sits on one candidate, 1.0 means they are tied.
-    """
+    """Shannon entropy, divided by that of a flat distribution. 0.0 peaked, 1.0 tied."""
     if len(probabilities) < 2:
         return 0.0
     total = 0.0
@@ -122,13 +96,10 @@ def _margin(probabilities: list[float]) -> float:
 
 @dataclass(frozen=True)
 class CalibratedGate:
-    """`Gate`, but on probabilities rescaled by a fitted temperature.
+    """`Gate` on probabilities rescaled by a fitted temperature.
 
-    Fit `temperatures` with `decide.calibration.fit_temperature` on answers
-    whose correct label you know. A temperature above 1 means the backend was
-    overconfident, so its probabilities are pulled down before the threshold
-    reads them, and more questions escalate than `Gate` would have escalated at
-    the same number.
+    Fit it with `decide.calibration.fit_temperature`. Above 1 pulls an
+    overconfident backend down, so more questions escalate.
     """
 
     min_confidence: float = 0.0
@@ -174,10 +145,8 @@ class CalibratedGate:
 class EntropyGate:
     """Escalate when the distribution is spread out, not when its peak is low.
 
-    `max_entropy` is on a normalized scale: 0.0 accepts only a distribution with
-    all its mass on one candidate, 1.0 accepts anything. Two answers with the
-    same winning probability can differ here, because one may have a clear
-    runner-up and the other a three-way tie.
+    `max_entropy` is normalized: 0.0 accepts only all the mass on one
+    candidate, 1.0 accepts anything.
     """
 
     max_entropy: float = 1.0
@@ -215,9 +184,7 @@ class EntropyGate:
 class MarginGate:
     """Escalate when first and second place are close.
 
-    The margin is what decides whether the winner would change, so a 0.51 that
-    beat a 0.02 runner-up is a different answer from a 0.51 that beat a 0.49,
-    and `Gate` cannot tell them apart.
+    The margin, not the peak, is what decides whether the winner would change.
     """
 
     min_margin: float = 0.0
@@ -255,14 +222,8 @@ class MarginGate:
 class ConformalGate:
     """Accept only when one candidate survives the conformal cut.
 
-    Fit `quantile` with `decide.calibration.fit_conformal_quantile` at the
-    coverage you want. The prediction set is every candidate whose probability
-    is at least `1 - quantile`; the answer is accepted when that set holds
-    exactly one candidate, and escalated when it holds more.
-
-    This ties escalation to a coverage rate measured on your own data instead of
-    a threshold picked by feel. The guarantee is exchangeability: it holds for
-    inputs that look like the ones you fitted on.
+    Fit `quantile` with `decide.calibration.fit_conformal_quantile`. The
+    guarantee is exchangeability: it holds for inputs like the ones fitted on.
     """
 
     quantile: float = 1.0
@@ -279,7 +240,7 @@ class ConformalGate:
         return self.quantile
 
     def prediction_set_size(self, name: str, answer: object) -> int | None:
-        """How many candidates survive the cut, or None when the answer is not gated."""
+        """How many candidates survive the cut, or None when not gated."""
         probabilities = _distribution(answer)
         if probabilities is None:
             return None
@@ -287,7 +248,7 @@ class ConformalGate:
         return max(1, sum(1 for p in probabilities if p >= floor))
 
     def confidence(self, response: Response) -> dict[str, float]:
-        """One over the set size, so a single surviving candidate scores 1.0."""
+        """One over the set size, so a single survivor scores 1.0."""
         out: dict[str, float] = {}
         for name, answer in response.answers.items():
             size = self.prediction_set_size(name, answer)
