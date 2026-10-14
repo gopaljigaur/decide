@@ -90,14 +90,18 @@ compatibility. The `model` column is what the server reported back in
 | Server | Version tested | Model reported | Result |
 |---|---|---|---|
 | [Von](https://github.com/wfzyx/von) | 1.3.0 | `von-1.3.0` | Choice, Noul and Score all answered |
+| [`laya-serve`](https://github.com/NandhaKishorM/laya) | laya 0.4.7 | `laya-rl-agent` | same, on `/v1/systemone` |
 | `decide serve` | this package | the chain's backend | covered by the test suite |
 
-Two things that cost time when testing Von, in case they bite you elsewhere:
+Things that cost time while testing these, in case they bite you elsewhere:
 
 - The first request loads the model, which took 9 seconds on CPU here. The
   backend's default timeout is 30 seconds, and a cold server plus a slow disk
   can exceed it. Raise `timeout` for the first call, or warm the server first.
 - Servers that need no key still need `api_key` passed, since the backend
   sends an `Authorization` header unconditionally. Any string will do.
+- `laya-serve` takes no flags. It reads `LAYA_PORT`, `LAYA_HOST` and the rest
+  from the environment, and `--help` starts the server instead of printing
+  help, binding `0.0.0.0:8000` by default.
 
 Back to the [README](../README.md).
