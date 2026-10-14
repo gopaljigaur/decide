@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.5 (2026-10-15)
+
+- Add `decide.policies` with four alternatives to thresholding the top
+  probability: `CalibratedGate` rescales by a fitted temperature,
+  `EntropyGate` reads the whole distribution, `MarginGate` reads the gap
+  between first and second place, and `ConformalGate` accepts only when one
+  candidate survives a fitted cut. Each is a drop-in for `Gate`, which is
+  unchanged, and all of them leave Score answers ungated.
+- Add `decide.calibration` with `fit_temperature` and `fit_conformal_quantile`,
+  which set those parameters from answers whose correct label is known, plus a
+  `Calibration` record that saves and loads as JSON. Pure Python, so the core
+  install gains no dependency.
+- The `llm` backend now sends `max_tokens`, defaulting to 512. Without a cap, a
+  model that loses the JSON format generates until its context runs out, and a
+  hosted API bills for all of it. Pass `None` for the old behaviour.
+- Document running the `typesafe` backend against other servers that speak
+  `POST /v1/systemone`, with a table of the ones actually tested.
+- Split the reference sections of the README into `docs/`.
+
 ## 0.2.4 (2026-10-13)
 
 - Fix `decide.__version__`, which 0.2.3 left reading `0.2.2`. A test now keeps it
