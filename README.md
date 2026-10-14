@@ -1,84 +1,45 @@
-# pydecide
+<div align="center">
 
-[![CI](https://github.com/gopaljigaur/decide/actions/workflows/ci.yml/badge.svg)](https://github.com/gopaljigaur/decide/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/pydecide)](https://pypi.org/project/pydecide/)
+<h1>pydecide</h1>
 
-`decide` is one Python client for typed decisions (Choice, Score and Noul)
-over any "System One" decision model: TypeSafe's hosted Jev, OpenRouter's
-Decisions endpoint, the open-weight laya family (PyTorch and MLX), any
-sentence-transformers CrossEncoder, and a JSON-prompted LLM fallback. The
-core of the library is the fallback chain: a `Client` takes an ordered list
-of these backends and a confidence policy, and if a backend errors or
-answers with low confidence, the next backend in the chain is tried, so a
-cheap local model can back off to a hosted one only when it's unsure.
+<p><b>One Python client for typed decisions, with a confidence gate between the cheap model and the good one.</b></p>
 
-The library also ships a small HTTP server (see
-[Server](#server-point-typesafes-sdk-at-a-local-model) below) that speaks
-TypeSafe's wire protocol. laya now ships its own `laya-serve` as of 0.3.7,
-so this server isn't the reason to reach for `decide` if you only run laya.
-Its purpose is chaining several backends (local and hosted) behind one
-TypeSafe-compatible endpoint.
+<p>
+<a href="https://github.com/gopaljigaur/decide/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/gopaljigaur/decide/actions/workflows/ci.yml/badge.svg"></a>
+<a href="https://pypi.org/project/pydecide/"><img alt="PyPI" src="https://img.shields.io/pypi/v/pydecide?color=blue"></a>
+<a href="https://pypi.org/project/pydecide/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/pydecide"></a>
+<a href="https://pypi.org/project/pydecide/"><img alt="Downloads" src="https://img.shields.io/pypi/dm/pydecide?color=blue"></a>
+<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/pydecide?color=blue"></a>
+</p>
 
-## Already using typesafe-sdk?
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/chain-dark.svg">
+  <img alt="A state and three typed questions enter tier one, a 22M parameter cross-encoder. A confidence gate sends the questions it was not sure about to tier two, Laya. The response carries both the answers and the route." src="docs/chain-light.svg" width="920">
+</picture>
 
-Swap the import. Your questions, your `system_one` calls and the response
-object stay the same, and with no other change the hosted API is the only
-backend, exactly as before.
+</div>
 
-```python
-from decide import TypeSafeClient  # was: from typesafe_sdk import TypeSafeClient
-```
+Routing, triage and guardrail calls do not need a chat model. A decision model
+takes a state and typed questions (pick one of these, score this, yes or no)
+and answers with probabilities, in milliseconds. `pydecide` speaks to all of
+them through one API: TypeSafe's hosted Jev, OpenRouter, OpenAI's Decisions
+endpoint, the open-weight laya family on PyTorch and MLX, any
+sentence-transformers CrossEncoder, and a JSON-prompted LLM as a last resort.
 
-Add `fallback=` and the call keeps answering when the hosted API does not.
-Here the hosted tier is a transport that always returns 503, so the local
-model takes over:
+The reason to use it over any single backend's SDK is the chain. A `Client`
+takes an ordered list of backends and a confidence policy. A backend that
+errors, or that answers below its threshold, hands the question to the next
+one, so a local model carries the traffic and a hosted model sees only what
+the local one could not answer. Every response records the route it took.
 
-```python
-import httpx
-from decide import TypeSafeClient
-from typesafe_sdk import Choice
-
-hosted_down = httpx.MockTransport(lambda request: httpx.Response(503, text="down"))
-client = TypeSafeClient(api_key="sk-demo", transport=hosted_down, fallback=["laya_mlx"])
-result = client.system_one(
-    "I was charged twice for the same order, please refund the duplicate.",
-    {
-        "team": Choice(
-            instructions="Which team owns this?", criteria={"billing": None, "engineering": None}
-        )
-    },
-)
-print(result.choices["team"].choice, round(result.choices["team"].confidence, 3))
-print(result.decide.backend, result.decide.model)
-print(result.decide.route)
-```
-
-```
-billing 0.99
-laya_mlx aac6fef/laya-multilingual-mlx
-['typesafe:error', 'laya_mlx:ok']
-```
-
-The result is a subclass of the SDK's own `SystemOneResponse`, so existing code
-that reads `answers`, `choices` or `usage` keeps working; `result.decide` adds
-the backend, model, latency and route. Questions can be the SDK's `Choice`,
-`Score` and `Noul`, decide's own, or a mix. `typesafe-sdk` is not a dependency
-of `pydecide`; install it yourself to use this layer. `AsyncTypeSafeClient`
-works the same way.
-
-Errors keep the vendor types: a failed hosted call raises the matching
-`TypeSafeAPIError` subclass (`TypeSafeInternalServerError` for a 503,
-`TypeSafeAPIConnectionError` for a transport failure, and so on), so existing
-`except` clauses still catch it. With a `fallback` and every tier failing, the
-error is both a `TypeSafeError` and a `decide.AllBackendsFailed`.
-
-`retry=` takes a `typesafe_sdk.RetryPolicy` and retries the hosted tier before
-the chain moves on. It honours `max_retries`, `backoff_initial`, `backoff_max`,
-`backoff_jitter`, `http_statuses`, `api_connection_error` and
-`api_timeout_error`; it ignores `respect_retry_after`, `exceptions`,
-`predicate` and `timeout`. Not supported yet: `response_model=`, `http_client=`,
-and per-call `retry=`, `extra_headers=`, `extra_body=` and `timeout=` (each
-raises `NotImplementedError`).
+|  |  |
+|---|---|
+| **One API, seven backends** | Local and hosted behind the same `Choice`, `Score` and `Noul` types. |
+| **Confidence gate** | Per call, per question, or per question type. Score answers are never gated, and the README says why. |
+| **Readable routes** | `r.meta.route` is `['crossencoder:low_confidence:team=0.44<0.60', 'laya:ok']`, not a boolean. |
+| **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. Documented limits below. |
+| **A server and a CLI** | `decide serve` speaks TypeSafe's wire format; `decide ask` answers from the shell. |
+| **8.6 ms** | Median for one Choice question on an M4 with laya-mlx, in process. Measured, with the method below. |
 
 ## Install
 
@@ -191,6 +152,67 @@ you to install a local backend or set a hosted one's API key.
 
 `AsyncClient` has the same surface, `await`ed: `await client.decide(...)`,
 `await client.decide_batch(...)`, `AsyncClient.from_env(...)`.
+
+## Already using typesafe-sdk?
+
+Swap the import. Your questions, your `system_one` calls and the response
+object stay the same, and with no other change the hosted API is the only
+backend, exactly as before.
+
+```python
+from decide import TypeSafeClient  # was: from typesafe_sdk import TypeSafeClient
+```
+
+Add `fallback=` and the call keeps answering when the hosted API does not.
+Here the hosted tier is a transport that always returns 503, so the local
+model takes over:
+
+```python
+import httpx
+from decide import TypeSafeClient
+from typesafe_sdk import Choice
+
+hosted_down = httpx.MockTransport(lambda request: httpx.Response(503, text="down"))
+client = TypeSafeClient(api_key="sk-demo", transport=hosted_down, fallback=["laya_mlx"])
+result = client.system_one(
+    "I was charged twice for the same order, please refund the duplicate.",
+    {
+        "team": Choice(
+            instructions="Which team owns this?", criteria={"billing": None, "engineering": None}
+        )
+    },
+)
+print(result.choices["team"].choice, round(result.choices["team"].confidence, 3))
+print(result.decide.backend, result.decide.model)
+print(result.decide.route)
+```
+
+```
+billing 0.99
+laya_mlx aac6fef/laya-multilingual-mlx
+['typesafe:error', 'laya_mlx:ok']
+```
+
+The result is a subclass of the SDK's own `SystemOneResponse`, so existing code
+that reads `answers`, `choices` or `usage` keeps working; `result.decide` adds
+the backend, model, latency and route. Questions can be the SDK's `Choice`,
+`Score` and `Noul`, decide's own, or a mix. `typesafe-sdk` is not a dependency
+of `pydecide`; install it yourself to use this layer. `AsyncTypeSafeClient`
+works the same way.
+
+Errors keep the vendor types: a failed hosted call raises the matching
+`TypeSafeAPIError` subclass (`TypeSafeInternalServerError` for a 503,
+`TypeSafeAPIConnectionError` for a transport failure, and so on), so existing
+`except` clauses still catch it. With a `fallback` and every tier failing, the
+error is both a `TypeSafeError` and a `decide.AllBackendsFailed`.
+
+`retry=` takes a `typesafe_sdk.RetryPolicy` and retries the hosted tier before
+the chain moves on. It honours `max_retries`, `backoff_initial`, `backoff_max`,
+`backoff_jitter`, `http_statuses`, `api_connection_error` and
+`api_timeout_error`; it ignores `respect_retry_after`, `exceptions`,
+`predicate` and `timeout`. Not supported yet: `response_model=`, `http_client=`,
+and per-call `retry=`, `extra_headers=`, `extra_body=` and `timeout=` (each
+raises `NotImplementedError`).
 
 ## Backends
 
