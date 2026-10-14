@@ -8,7 +8,6 @@
 <a href="https://github.com/gopaljigaur/decide/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/gopaljigaur/decide/actions/workflows/ci.yml/badge.svg"></a>
 <a href="https://pypi.org/project/pydecide/"><img alt="PyPI" src="https://img.shields.io/pypi/v/pydecide?color=blue"></a>
 <a href="https://pypi.org/project/pydecide/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/pydecide"></a>
-<a href="https://pypi.org/project/pydecide/"><img alt="Downloads" src="https://img.shields.io/pypi/dm/pydecide?color=blue"></a>
 <a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/pydecide?color=blue"></a>
 </p>
 
