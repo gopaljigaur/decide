@@ -275,6 +275,47 @@ auto-selected at all.
 | `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
 | `DECIDE_API_KEY` | `decide serve` | Bearer token required to call the server, when `--api-key` is not passed. The flag takes precedence over this variable. |
 
+### Other servers that speak the same protocol
+
+A lot of decision models serve `POST /v1/systemone`. The `typesafe` backend
+speaks that protocol and takes a `base_url`, so pointing it at one of them
+needs no new code:
+
+```python
+from decide import Client
+from decide.backends.typesafe import TypeSafeBackend
+
+client = Client([TypeSafeBackend(api_key="unused", base_url="http://localhost:8000")])
+```
+
+Or from the shell, with no code at all:
+
+```bash
+TYPESAFE_API_KEY=unused TYPESAFE_BASE_URL=http://localhost:8000 \
+  DECIDE_BACKENDS=typesafe \
+  decide ask "I was charged twice" --choice billing,engineering
+```
+
+`DECIDE_BACKENDS` matters here: with a local backend installed, `from_env`
+puts it first and the server never gets the question.
+
+The table lists what has actually been run, not everything that claims
+compatibility. The `model` column is what the server reported back in
+`response.meta.model`.
+
+| Server | Version tested | Model reported | Result |
+|---|---|---|---|
+| [Von](https://github.com/wfzyx/von) | 1.3.0 | `von-1.3.0` | Choice, Noul and Score all answered |
+| `decide serve` | this package | the chain's backend | covered by the test suite |
+
+Two things that cost time when testing Von, in case they bite you elsewhere:
+
+- The first request loads the model, which took 9 seconds on CPU here. The
+  backend's default timeout is 30 seconds, and a cold server plus a slow disk
+  can exceed it. Raise `timeout` for the first call, or warm the server first.
+- Servers that need no key still need `api_key` passed, since the backend
+  sends an `Authorization` header unconditionally. Any string will do.
+
 ## Gating and fallback
 
 ```python
