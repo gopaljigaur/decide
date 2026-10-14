@@ -1,0 +1,103 @@
+# Backends
+
+| Module | Backend name | Extra | Notes |
+|---|---|---|---|
+| `typesafe.py` | `typesafe` | none (httpx only) | `POST {base_url}/v1/systemone`, bearer auth. Default base URL `https://api.typesafe.ai`, default model `jev-latest`. |
+| `openrouter.py` | `openrouter` | none | Same wire shape as `typesafe`, `POST https://openrouter.ai/api/alpha/decisions`, default model `typesafe/jev-latest`. |
+| `openai_decisions.py` | `openai_decisions` | none (httpx only) | OpenAI Decisions API (public beta), `POST https://api.openai.com/v1/decisions`, bearer auth, default model `gpt-6-luna`. A `Noul` is a `predicate` question; a `Noul`'s true/false descriptions are appended to its instructions, since the API has no field for them. A refusal raises `BadResponseError`. |
+| `laya.py` | `laya` | `pydecide[laya]` | Local PyTorch `laya.Agent`, default model `convaiinnovations/laya` when constructed directly. |
+| `laya_mlx.py` | `laya_mlx` | `pydecide[mlx]` (Python 3.11+) | Local MLX `laya_mlx.Agent` (Apple Silicon), default model `aac6fef/laya-multilingual-mlx` when constructed directly. |
+| `crossencoder.py` | `crossencoder` | `pydecide[st]` | Local `sentence_transformers.CrossEncoder`. Not configurable from the environment; construct it directly and pass it to `Client([...])`. |
+| `llm.py` | `llm` | none (httpx only) | Any OpenAI-compatible chat-completions server, default base URL `https://api.openai.com/v1`, default model `gpt-4o-mini`. The least trustworthy backend (see below). |
+
+`crossencoder` is built by hand, for example:
+
+```python
+from decide import Client, Choice
+from decide.backends.crossencoder import CrossEncoderBackend
+
+backend = CrossEncoderBackend("cross-encoder/ms-marco-MiniLM-L6-v2")
+client = Client([backend])
+
+r = client.decide(
+    "I was charged twice for the same order last week, please refund the duplicate charge.",
+    {
+        "team": Choice(
+            "Which team should handle this?",
+            {
+                "billing": "Charges, invoices, payment problems, refunds",
+                "eng": "Bugs, crashes, broken features",
+                "shipping": "Delivery status, delays, lost packages",
+            },
+        )
+    },
+)
+r.choices["team"].choice  # "billing"
+r.choices["team"].probabilities  # {"billing": 0.947, "eng": 0.019, "shipping": 0.034}
+```
+
+### Environment variables: overrides and hosted-backend keys
+
+None of these are required to get started. See
+[Quickstart](../README.md#quickstart-zero-configuration) in the README. They
+either override a local backend that `from_env` already auto-selects once
+it's installed, or supply the API key a hosted backend needs to be
+auto-selected at all.
+
+| Variable | Backend | Meaning |
+|---|---|---|
+| `DECIDE_LOCAL_MODEL` | `laya`, `laya_mlx` | Overrides the default Hugging Face repo id (or local path) of the model to load. Optional: omit it and the installed local backend auto-selects with its own default model. |
+| `TYPESAFE_API_KEY` | `typesafe` | API key, sent as `Authorization: Bearer`. Required to auto-select `typesafe`. |
+| `TYPESAFE_BASE_URL` | `typesafe` | Overrides the default `https://api.typesafe.ai`. |
+| `OPENROUTER_API_KEY` | `openrouter` | API key, sent as `Authorization: Bearer`. Required to auto-select `openrouter`. |
+| `OPENAI_API_KEY` | `openai_decisions`, `llm` | API key, sent as `Authorization: Bearer`. Setting it auto-selects `openai_decisions` and `llm`; the `llm` backend sends it only if the server needs one. |
+| `DECIDE_OPENAI_DECISIONS` | `openai_decisions` | Set to `0` to stop `OPENAI_API_KEY` from auto-selecting `openai_decisions`. |
+| `DECIDE_OPENAI_DECISIONS_MODEL` | `openai_decisions` | Model to request; defaults to `gpt-6-luna`. |
+| `DECIDE_LLM_BASE_URL` | `llm` | Base URL of an OpenAI-compatible chat-completions server. Setting it (or `OPENAI_API_KEY`) auto-selects `llm`. |
+| `DECIDE_LLM_MODEL` | `llm` | Model name to request; defaults to `gpt-4o-mini`. |
+| `DECIDE_BACKENDS` | `Client.from_env` | Comma-separated backend names, overriding auto-detection entirely. |
+| `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
+| `DECIDE_API_KEY` | `decide serve` | Bearer token required to call the server, when `--api-key` is not passed. The flag takes precedence over this variable. |
+
+### Other servers that speak the same protocol
+
+A lot of decision models serve `POST /v1/systemone`. The `typesafe` backend
+speaks that protocol and takes a `base_url`, so pointing it at one of them
+needs no new code:
+
+```python
+from decide import Client
+from decide.backends.typesafe import TypeSafeBackend
+
+client = Client([TypeSafeBackend(api_key="unused", base_url="http://localhost:8000")])
+```
+
+Or from the shell, with no code at all:
+
+```bash
+TYPESAFE_API_KEY=unused TYPESAFE_BASE_URL=http://localhost:8000 \
+  DECIDE_BACKENDS=typesafe \
+  decide ask "I was charged twice" --choice billing,engineering
+```
+
+`DECIDE_BACKENDS` matters here: with a local backend installed, `from_env`
+puts it first and the server never gets the question.
+
+The table lists what has actually been run, not everything that claims
+compatibility. The `model` column is what the server reported back in
+`response.meta.model`.
+
+| Server | Version tested | Model reported | Result |
+|---|---|---|---|
+| [Von](https://github.com/wfzyx/von) | 1.3.0 | `von-1.3.0` | Choice, Noul and Score all answered |
+| `decide serve` | this package | the chain's backend | covered by the test suite |
+
+Two things that cost time when testing Von, in case they bite you elsewhere:
+
+- The first request loads the model, which took 9 seconds on CPU here. The
+  backend's default timeout is 30 seconds, and a cold server plus a slow disk
+  can exceed it. Raise `timeout` for the first call, or warm the server first.
+- Servers that need no key still need `api_key` passed, since the backend
+  sends an `Authorization` header unconditionally. Any string will do.
+
+Back to the [README](../README.md).
