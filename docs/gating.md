@@ -154,8 +154,8 @@ from decide import CalibratedGate, ConformalGate, fit_conformal_quantile, fit_te
 # rows: (the probabilities a backend reported, the index of the right label)
 rows = [([0.95, 0.05], 0), ([0.88, 0.12], 1), ...]
 
-temperature = fit_temperature(rows)          # above 1.0 means it was overconfident
-quantile = fit_conformal_quantile(rows, alpha=0.1)   # for 90% coverage
+temperature = fit_temperature(rows)  # above 1.0 means it was overconfident
+quantile = fit_conformal_quantile(rows, alpha=0.1)  # for 90% coverage
 
 client = Client(backends, policy=CalibratedGate(min_confidence=0.85, temperature=temperature))
 client = Client(backends, policy=ConformalGate(quantile=quantile))
