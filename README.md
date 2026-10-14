@@ -216,8 +216,9 @@ accordingly, as a signal to gate and fall back on, not as ground truth.
 
 ## Status
 
-`pydecide` is at 0.2.5. The public API may still change before a 1.0
-release.
+The public API may still change before a 1.0 release. The current version is
+the one in the PyPI badge above, and the [changelog](CHANGELOG.md) says what
+changed.
 
 ## License
 
