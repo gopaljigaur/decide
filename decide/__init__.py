@@ -1,3 +1,4 @@
+from decide.calibration import Calibration, fit_conformal_quantile, fit_temperature
 from decide.client import AsyncClient, Client
 from decide.compat import AsyncTypeSafeClient, TypeSafeClient
 from decide.errors import (
@@ -11,6 +12,7 @@ from decide.errors import (
     RateLimitError,
 )
 from decide.gate import Gate
+from decide.policies import CalibratedGate, ConformalGate, EntropyGate, MarginGate, Policy
 from decide.types import (
     Choice,
     ChoiceAnswer,
@@ -41,7 +43,15 @@ __all__ = [
     "ConfigError",
     "Content",
     "DecideError",
+    "CalibratedGate",
+    "Calibration",
+    "ConformalGate",
+    "EntropyGate",
     "Gate",
+    "MarginGate",
+    "Policy",
+    "fit_conformal_quantile",
+    "fit_temperature",
     "Meta",
     "Noul",
     "NoulAnswer",

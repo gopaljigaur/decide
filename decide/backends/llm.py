@@ -247,6 +247,12 @@ class LLMBackend(HttpClientMixin, BaseBackend):
     ships, since it prompts a general chat model rather than calling a
     purpose-built classifier, and every probability in its answers is the
     LLM's own self-reported estimate.
+
+    `max_tokens` caps the reply. A typed answer is short, so the default of 512
+    is generous, and the cap matters because a model that loses the JSON format
+    can generate until it runs out of context: a hosted API bills every one of
+    those tokens, and a local one spends the whole timeout. Pass `None` to send
+    no cap.
     """
 
     name = "llm"
@@ -260,6 +266,7 @@ class LLMBackend(HttpClientMixin, BaseBackend):
         model: str = "gpt-4o-mini",
         timeout: float = 60.0,
         temperature: float = 0.0,
+        max_tokens: int | None = 512,
         transport: httpx.BaseTransport | httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -267,6 +274,9 @@ class LLMBackend(HttpClientMixin, BaseBackend):
         self.model = model
         self.timeout = timeout
         self.temperature = temperature
+        if max_tokens is not None and max_tokens <= 0:
+            raise ValueError(f"max_tokens must be positive or None, got {max_tokens}")
+        self.max_tokens = max_tokens
         self._transport = transport
         self._client: httpx.Client | None = None
         self._aclient: httpx.AsyncClient | None = None
@@ -295,6 +305,10 @@ class LLMBackend(HttpClientMixin, BaseBackend):
             "messages": self._messages(request),
             "temperature": self.temperature,
         }
+        if self.max_tokens is not None:
+            # A typed answer is short. Without a cap, a model that loses the format
+            # and generates until the context runs out bills for every token of it.
+            body["max_tokens"] = self.max_tokens
         if response_format:
             body["response_format"] = {"type": "json_object"}
         return body
