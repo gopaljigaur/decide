@@ -384,6 +384,81 @@ from decide import Gate
 Gate(per_type={"choice": 0.85, "noul": 0.95})
 ```
 
+### Gating on something other than the top probability
+
+`Gate` escalates when the winning probability falls below a number you pick.
+That is the cascade baseline from
+[FrugalGPT](https://arxiv.org/abs/2305.05176), and it has two known limits.
+The probability it reads is usually not calibrated, so 0.85 does not mean
+right 85% of the time. And the top probability alone discards the shape of
+the rest of the distribution: `{a: 0.51, b: 0.02, c: 0.02, d: 0.45}` and
+`{a: 0.51, b: 0.17, c: 0.16, d: 0.16}` are the same number to `Gate` and are
+not the same answer.
+
+Four alternatives ship in `decide.policies`. Each is a drop-in for `Gate` in
+`Client(policy=...)`, and each skips `Score` answers for the reason above.
+
+| Policy | Escalates when | Parameter |
+|---|---|---|
+| `EntropyGate` | the distribution is spread out | `max_entropy`, normalized to [0, 1] |
+| `MarginGate` | first and second place are close | `min_margin` |
+| `CalibratedGate` | a rescaled probability is below the threshold | `min_confidence` plus a fitted `temperature` |
+| `ConformalGate` | more than one candidate survives the cut | `quantile`, fitted for a coverage rate |
+
+```python
+from decide import Client, EntropyGate
+
+# A three-way near-tie escalates even though its winner clears 0.5.
+client = Client(backends, policy=EntropyGate(max_entropy=0.75))
+```
+
+The reason string names which rule fired, and it reaches
+`response.meta.route` the same way `Gate`'s does:
+
+```
+['crossencoder:high_entropy:team=0.89>0.75', 'laya:ok']
+```
+
+#### Fitting the parameters instead of guessing them
+
+`CalibratedGate` and `ConformalGate` take numbers you fit on answers whose
+correct label you already know, with no dependency beyond the standard
+library:
+
+```python
+from decide import CalibratedGate, ConformalGate, fit_conformal_quantile, fit_temperature
+
+# rows: (the probabilities a backend reported, the index of the right label)
+rows = [([0.95, 0.05], 0), ([0.88, 0.12], 1), ...]
+
+temperature = fit_temperature(rows)          # above 1.0 means it was overconfident
+quantile = fit_conformal_quantile(rows, alpha=0.1)   # for 90% coverage
+
+client = Client(backends, policy=CalibratedGate(min_confidence=0.85, temperature=temperature))
+client = Client(backends, policy=ConformalGate(quantile=quantile))
+```
+
+`fit_temperature` returns exactly 1.0 for a backend that is already honest,
+and above 1.0 for one that is not: rows claiming 0.95 while being right 70%
+of the time fit a temperature of 3.48, which pulls every such answer under an
+0.9 threshold that `Gate` would have waved through.
+
+`fit_conformal_quantile` gives the stronger promise. Asking for 95, 90 and 80
+percent coverage on synthetic rows returned 94.5, 89.6 and 80.3 percent on
+held-out data, with the mean prediction set shrinking from 2.26 candidates to
+1.44 as the target loosens. The guarantee is exchangeability, so it holds for
+inputs that look like the ones you fitted on and says nothing about a
+different workload.
+
+Save a fit and load it next to the code that uses it:
+
+```python
+from decide import Calibration
+
+Calibration(temperatures={"team": 3.48}, quantiles={"team": 0.82}).save("calibration.json")
+loaded = Calibration.load("calibration.json")
+```
+
 ## Server: point TypeSafe's SDK at a local model
 
 laya ships its own `laya-serve` command as of 0.3.7, so if you only run
