@@ -6,7 +6,7 @@
 | `openrouter.py` | `openrouter` | none | Same wire shape as `typesafe`, `POST https://openrouter.ai/api/alpha/decisions`, default model `typesafe/jev-latest`. |
 | `openai_decisions.py` | `openai_decisions` | none (httpx only) | OpenAI Decisions API (public beta), `POST https://api.openai.com/v1/decisions`, bearer auth, default model `gpt-6-luna`. A `Noul` is a `predicate` question; a `Noul`'s true/false descriptions are appended to its instructions, since the API has no field for them. A refusal raises `BadResponseError`. |
 | `laya.py` | `laya` | `pydecide[laya]` | Local PyTorch `laya.Agent`, default model `convaiinnovations/laya` when constructed directly. |
-| `laya_mlx.py` | `laya_mlx` | `pydecide[mlx]` (Python 3.11+) | Local MLX `laya_mlx.Agent` (Apple Silicon), default model `aac6fef/laya-multilingual-mlx` when constructed directly. |
+| `laya_mlx.py` | `laya_mlx` | `pydecide[mlx]` (Python 3.11+) | Local MLX `laya_mlx.Agent` (Apple Silicon), default model `aac6fef/laya-mlx` when constructed directly. |
 | `crossencoder.py` | `crossencoder` | `pydecide[st]` | Local `sentence_transformers.CrossEncoder`. Not configurable from the environment; construct it directly and pass it to `Client([...])`. |
 | `llm.py` | `llm` | none (httpx only) | Any OpenAI-compatible chat-completions server, default base URL `https://api.openai.com/v1`, default model `gpt-4o-mini`. The least trustworthy backend (see below). |
 
@@ -58,6 +58,27 @@ auto-selected at all.
 | `DECIDE_BACKENDS` | `Client.from_env` | Comma-separated backend names, overriding auto-detection entirely. |
 | `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
 | `DECIDE_API_KEY` | `decide serve` | Bearer token required to call the server, when `--api-key` is not passed. The flag takes precedence over this variable. |
+
+### Which laya checkpoint
+
+Three are published and they are not interchangeable. Measured on 150 rows of
+ag_news (four-way `Choice`) and 150 of sst2 (yes/no `Noul`), MLX on an M4, with
+the method and per-row output in
+[system-one-bench](https://github.com/gopaljigaur/system-one-bench):
+
+| Checkpoint | ag_news | ECE | sst2 | ECE | p50 ag_news / sst2 |
+|---|---|---|---|---|---|
+| `aac6fef/laya-mlx` (English, the default) | 0.953 | **0.028** | 0.833 | **0.053** | 33.8 / 19.5 ms |
+| `aac6fef/laya-typed-decisions-mlx` | 0.953 | 0.126 | **0.847** | 0.143 | 31.3 / 20.2 ms |
+| `aac6fef/laya-multilingual-mlx` | 0.920 | 0.072 | 0.527 | 0.373 | **11.7 / 8.2 ms** |
+
+English is the default because the gate reads confidence, and it is the only one
+whose confidence is close to honest on both question shapes. The multilingual
+checkpoint is three times faster and the only one trained for other languages,
+but it answers yes/no barely above chance, so pass it per backend when the input
+is not English instead of relying on it everywhere. The `laya` PyTorch backend's
+default, `convaiinnovations/laya`, is the same English weights and scores the
+same.
 
 ### Other servers that speak the same protocol
 

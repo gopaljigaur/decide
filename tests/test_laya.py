@@ -250,7 +250,7 @@ def test_laya_mlx_predict_called_with_wire_questions_and_state():
     assert state == REQ.state
     assert questions == to_wire_request(REQ)["questions"]
     _assert_parsed(r, "laya_mlx")
-    assert r.meta.model == "aac6fef/laya-multilingual-mlx"
+    assert r.meta.model == "aac6fef/laya-mlx"
 
 
 def test_laya_mlx_capabilities_and_batch():

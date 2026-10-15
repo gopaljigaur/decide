@@ -7,7 +7,7 @@ or hosted, behind one TypeSafe-compatible endpoint, with the same
 fallback and gating behavior as the Python client.
 
 ```bash
-DECIDE_LOCAL_MODEL=aac6fef/laya-multilingual-mlx decide serve --backends laya_mlx --port 8811
+decide serve --backends laya_mlx --port 8811
 ```
 
 `GET /health` reports liveness and the configured backend names;
@@ -39,17 +39,17 @@ curl -s -X POST http://127.0.0.1:8811/v1/systemone \
 
 ```json
 {
-  "model": "aac6fef/laya-multilingual-mlx",
+  "model": "aac6fef/laya-mlx",
   "answers": {
-    "team": {"type": "choice", "choice": "billing", "confidence": 1.0,
-              "probabilities": {"billing": 1.0, "engineering": 0.0, "sales": 0.0}},
-    "severity": {"type": "score", "score": 1.5522, "confidence": 0.5719,
+    "team": {"type": "choice", "choice": "billing", "confidence": 0.9763,
+              "probabilities": {"billing": 0.9763, "engineering": 0.0107, "sales": 0.013}},
+    "severity": {"type": "score", "score": 1.6284, "confidence": 0.7086,
                  "legend": {"0": "minor", "1": "degraded", "2": "blocked"},
-                 "probabilities": {"0": 0.0197, "1": 0.4083, "2": 0.5719}},
-    "refund": {"type": "noul", "noul": 0.9461}
+                 "probabilities": {"0": 0.0802, "1": 0.2112, "2": 0.7086}},
+    "refund": {"type": "noul", "noul": 0.8919}
   },
   "usage": {"input_tokens": 0, "output_tokens": 0},
-  "decide": {"backend": "laya_mlx", "latency_ms": 50.5, "route": ["laya_mlx:ok"]}
+  "decide": {"backend": "laya_mlx", "latency_ms": 83.8, "route": ["laya_mlx:ok"]}
 }
 ```
 
@@ -82,13 +82,13 @@ resp = client.system_one(
 ```
 
 ```text
-model='aac6fef/laya-multilingual-mlx' usage=Usage(input_tokens=0, output_tokens=0)
-answers={'team': ChoiceAnswer(type='choice', choice='billing', confidence=1.0,
-  probabilities={'billing': 1.0, 'engineering': 0.0, 'sales': 0.0}),
- 'severity': ScoreAnswer(type='score', score=1.5522, confidence=0.5719,
+model='aac6fef/laya-mlx' usage=Usage(input_tokens=0, output_tokens=0)
+answers={'team': ChoiceAnswer(type='choice', choice='billing', confidence=0.9763,
+  probabilities={'billing': 0.9763, 'engineering': 0.0107, 'sales': 0.013}),
+ 'severity': ScoreAnswer(type='score', score=1.6284, confidence=0.7086,
   legend={0: 'minor', 1: 'degraded', 2: 'blocked'},
-  probabilities={0: 0.0197, 1: 0.4083, 2: 0.5719}),
- 'refund': NoulAnswer(type='noul', noul=0.9461)}
+  probabilities={0: 0.0802, 1: 0.2112, 2: 0.7086}),
+ 'refund': NoulAnswer(type='noul', noul=0.8919)}
 ```
 
 TypeSafe's SDK parsed our server's response without modification: it is a

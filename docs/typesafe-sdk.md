@@ -33,8 +33,8 @@ print(result.decide.route)
 ```
 
 ```
-billing 0.99
-laya_mlx aac6fef/laya-multilingual-mlx
+billing 0.946
+laya_mlx aac6fef/laya-mlx
 ['typesafe:error', 'laya_mlx:ok']
 ```
 

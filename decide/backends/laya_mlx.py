@@ -24,10 +24,10 @@ class LayaMLXBackend(LayaBackend):
     Args:
         model: A Hugging Face repo id (or local path) to load lazily with `laya_mlx.load`
             (requires the `pydecide[mlx]` extra), unless `agent` is given. Defaults to
-            `"aac6fef/laya-multilingual-mlx"`, an MLX-ready checkpoint (`laya_mlx.load`'s own
-            default, `"convaiinnovations/laya"`, is laya's *PyTorch* repo id -- MLX loads its
-            `model.safetensors` fine, but the multilingual checkpoint is the more broadly useful
-            default for this backend).
+            `"aac6fef/laya-mlx"`, the English checkpoint: the best calibrated of the three
+            published ones, which is what the gate reads, and the only one that answers yes/no
+            reliably. Pass `"aac6fef/laya-multilingual-mlx"` for other languages. Measured in
+            [Backends](../../docs/backends.md).
         dtype: Forwarded to `laya_mlx.load(...)` (one of `"float32"`, `"float16"`, `"bfloat16"`);
             `None` leaves `laya_mlx.Agent`'s own default (`"float16"`) in place.
         agent: A pre-loaded `laya_mlx.Agent` (or any object with a matching `predict`), used as
@@ -41,7 +41,7 @@ class LayaMLXBackend(LayaBackend):
 
     def __init__(
         self,
-        model: str = "aac6fef/laya-multilingual-mlx",
+        model: str = "aac6fef/laya-mlx",
         *,
         dtype: str | None = None,
         agent: Any = None,

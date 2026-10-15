@@ -426,17 +426,16 @@ def _kwargs_for(name: str, env: Mapping[str, str]) -> dict[str, Any]:
         }
         return {k: v for k, v in kwargs.items() if v is not None}
     if name in ("laya", "laya_mlx"):
-        if _LAYA_MODEL_ENV not in env:
-            raise ConfigError(f"missing {_LAYA_MODEL_ENV} for backend {name!r}")
-        return {"model": env[_LAYA_MODEL_ENV]}
+        # Same as auto-detection: without the override the backend's own default applies.
+        return _auto_local_kwargs(env)
     if name in _ENV_UNSUPPORTED_BACKENDS:
         raise ConfigError(f"backend {name!r} {_ENV_UNSUPPORTED_BACKENDS[name]}")
     raise ConfigError(f"unknown backend {name!r}")
 
 
 def _auto_local_kwargs(env: Mapping[str, str]) -> dict[str, Any]:
-    """kwargs for auto-detected `laya`/`laya_mlx`: `model=` only when `DECIDE_LOCAL_MODEL` is
-    set, so the backend's own constructor default applies otherwise."""
+    """kwargs for `laya`/`laya_mlx`: `model=` only when `DECIDE_LOCAL_MODEL` is set, so the
+    backend's own constructor default applies otherwise."""
     if _LAYA_MODEL_ENV in env:
         return {"model": env[_LAYA_MODEL_ENV]}
     return {}

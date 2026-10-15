@@ -518,6 +518,26 @@ def test_from_env_laya_kwargs(monkeypatch):
     assert [b.name for b in c.backends] == ["laya"]
 
 
+def test_from_env_named_local_backend_without_the_override(monkeypatch):
+    """`DECIDE_BACKENDS=laya_mlx` alone works, as auto-detection does: no `model` kwarg."""
+    import decide.client as mod
+
+    captured = {}
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
+    c = Client.from_env(env={"DECIDE_BACKENDS": "laya_mlx"})
+    assert captured == {"laya_mlx": {}}
+    assert [b.name for b in c.backends] == ["laya_mlx"]
+
+
+def test_from_env_named_local_backend_takes_the_override(monkeypatch):
+    import decide.client as mod
+
+    captured = {}
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
+    Client.from_env(env={"DECIDE_BACKENDS": "laya", "DECIDE_LOCAL_MODEL": "m1"})
+    assert captured == {"laya": {"model": "m1"}}
+
+
 def test_from_env_laya_mlx_preferred_when_both_available(monkeypatch):
     import decide.client as mod
 

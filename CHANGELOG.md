@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.6 (2026-10-15)
+
+- `laya_mlx` now defaults to `aac6fef/laya-mlx`, the English checkpoint, instead
+  of the multilingual one. Measured on 150 rows each of ag_news and sst2, the
+  multilingual checkpoint answers 0.527 of yes/no questions correctly against
+  the English one's 0.833, and its expected calibration error on them is 0.373
+  against 0.053. A gate reads that confidence, so the best calibrated checkpoint
+  is the right default. Pass `model="aac6fef/laya-multilingual-mlx"` for input
+  that is not English. The numbers are in `docs/backends.md`.
+- Naming `laya` or `laya_mlx` in `DECIDE_BACKENDS` no longer requires
+  `DECIDE_LOCAL_MODEL`. It behaves like auto-detection and uses the backend's
+  own default checkpoint; set the variable to override it.
+- README, `docs/server.md` and `docs/typesafe-sdk.md` carry re-measured output
+  from the new default: one Choice question now takes 15.6 ms on an M4 instead
+  of 8.6 ms, since the English checkpoint is 421M against 322M.
+
 ## 0.2.5 (2026-10-15)
 
 - Add `decide.policies` with four alternatives to thresholding the top
