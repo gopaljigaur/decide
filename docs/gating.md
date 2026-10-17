@@ -11,6 +11,34 @@ Gate(
 )
 ```
 
+## Running local only, with no escalation
+
+A chain escalates by sending the state to the next backend, and the next
+backend may be a hosted API. To keep every decision on the machine that makes
+it, build the chain from local backends and tell the client to abstain instead
+of accepting an answer that missed the gate:
+
+```python
+from decide import Client, Gate, LowConfidence
+from decide.backends.laya_mlx import LayaMLXBackend
+
+client = Client(
+    [LayaMLXBackend()],
+    Gate(min_confidence=0.8),
+    on_low_confidence="raise",
+)
+
+try:
+    r = client.decide(state, questions)
+except LowConfidence as abstained:
+    ...  # abstained.response is the answer that missed, abstained.route is why
+```
+
+`on_low_confidence` defaults to `"accept"`, which returns the best answer seen
+with `"<name>:accepted_low_confidence"` on the route. With `"raise"` nothing
+leaves the machine and a low answer is an outcome you handle, not a reason to
+call out.
+
 ## Which number the gate reads
 
 The backend's own `confidence` when it reports one, and the top probability of

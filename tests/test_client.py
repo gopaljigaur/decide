@@ -1,7 +1,7 @@
 import pytest
 
 from decide import AsyncClient, Choice, ChoiceAnswer, Client, Gate, Noul, NoulAnswer
-from decide.errors import AllBackendsFailed, BackendError, ConfigError
+from decide.errors import AllBackendsFailed, BackendError, ConfigError, LowConfidence
 from tests.conftest import FakeBackend
 
 Q = {"team": Choice("Which team?", {"billing": None, "eng": None}), "refund": Noul("Refund?")}
@@ -505,6 +505,41 @@ def test_from_env_openai_decisions_model_and_opt_out(monkeypatch):
 def test_from_env_openai_decisions_needs_the_key_when_named(monkeypatch):
     with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
         Client.from_env(env={"DECIDE_BACKENDS": "openai_decisions"})
+
+
+def test_a_local_only_chain_can_abstain_instead_of_accepting_a_low_answer():
+    """`on_low_confidence="raise"` is how a chain fails instead of escalating."""
+    weak = FakeBackend("laya", confidence=0.7)
+    client = Client([weak], Gate(min_confidence=0.8), on_low_confidence="raise")
+
+    with pytest.raises(LowConfidence) as caught:
+        client.decide("s", Q)
+
+    assert caught.value.route == ["laya:low_confidence:team=0.70<0.80", "laya:low_confidence"]
+    assert caught.value.response.choices["team"].choice == "billing"
+
+
+def test_accepting_a_low_answer_stays_the_default():
+    weak = FakeBackend("laya", confidence=0.7)
+    r = Client([weak], Gate(min_confidence=0.8)).decide("s", Q)
+
+    assert r.meta.route[-1] == "laya:accepted_low_confidence"
+
+
+async def test_the_async_client_abstains_too():
+    weak = FakeBackend("laya", confidence=0.7)
+    client = AsyncClient([weak], Gate(min_confidence=0.8), on_low_confidence="raise")
+
+    with pytest.raises(LowConfidence):
+        await client.decide("s", Q)
+
+
+def test_a_batch_abstains_per_state():
+    weak = FakeBackend("laya", confidence=0.7)
+    client = Client([weak], Gate(min_confidence=0.8), on_low_confidence="raise")
+
+    with pytest.raises(LowConfidence):
+        client.decide_batch(["a", "b"], Q)
 
 
 def test_a_backend_that_cannot_express_noul_labels_hands_the_question_on():

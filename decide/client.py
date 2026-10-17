@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from decide.backends import available
 from decide.backends import load as load_backend
 from decide.backends.base import Backend
-from decide.errors import AllBackendsFailed, BackendError, ConfigError
+from decide.errors import AllBackendsFailed, BackendError, ConfigError, LowConfidence
 from decide.gate import Gate
 from decide.types import Content, Question, Request, Response
 
@@ -57,9 +57,15 @@ def _decision(
 
 
 def _finish(
-    route: list[str], errors: list[BackendError], best: tuple[float, Response, str] | None
+    route: list[str],
+    errors: list[BackendError],
+    best: tuple[float, Response, str] | None,
+    on_low_confidence: Literal["accept", "raise"] = "accept",
 ) -> Response:
     if best is not None:
+        if on_low_confidence == "raise":
+            route.append(f"{best[2]}:low_confidence")
+            raise LowConfidence(list(route), best[1].with_meta(route=list(route)))
         route.append(f"{best[2]}:accepted_low_confidence")
         return best[1].with_meta(route=list(route))
     raise AllBackendsFailed(list(route), errors)
@@ -110,6 +116,7 @@ def _finish_batch(
     errors_by_state: list[list[BackendError]],
     bests: list[tuple[float, Response, str] | None],
     results: list[Response | None],
+    on_low_confidence: Literal["accept", "raise"] = "accept",
 ) -> list[Response]:
     """Resolve every state still pending once all backends have run.
 
@@ -128,7 +135,7 @@ def _finish_batch(
         if bests[idx] is None:
             unroutable[idx] = list(routes[idx])
             continue
-        results[idx] = _finish(routes[idx], errors_by_state[idx], bests[idx])
+        results[idx] = _finish(routes[idx], errors_by_state[idx], bests[idx], on_low_confidence)
 
     if unroutable:
         partial = {i: r for i, r in enumerate(results) if r is not None}
@@ -140,9 +147,16 @@ def _finish_batch(
 
 
 class Client:
-    def __init__(self, backends: Sequence[Backend], policy: Gate | None = None) -> None:
+    def __init__(
+        self,
+        backends: Sequence[Backend],
+        policy: Gate | None = None,
+        *,
+        on_low_confidence: Literal["accept", "raise"] = "accept",
+    ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
+        self.on_low_confidence = on_low_confidence
 
     def decide(
         self, state: Content, questions: Mapping[str, Question], *, model: str | None = None
@@ -165,7 +179,7 @@ class Client:
             result, best = _decision(backend, response, None, self.policy, route, errors, best)
             if result is not None:
                 return result
-        return _finish(route, errors, best)
+        return _finish(route, errors, best, self.on_low_confidence)
 
     def decide_batch(
         self,
@@ -235,10 +249,18 @@ class Client:
                 results,
             )
 
-        return _finish_batch(pending, routes, errors_by_state, bests, results)
+        return _finish_batch(
+            pending, routes, errors_by_state, bests, results, self.on_low_confidence
+        )
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None, policy: Gate | None = None) -> Client:
+    def from_env(
+        cls,
+        env: Mapping[str, str] | None = None,
+        policy: Gate | None = None,
+        *,
+        on_low_confidence: Literal["accept", "raise"] = "accept",
+    ) -> Client:
         """Build a `Client` from an environment mapping.
 
         `env` defaults to `os.environ` (the real process environment) when
@@ -249,7 +271,7 @@ class Client:
         backend_names, kwargs_by_name = _resolve_env_backends(resolved_env)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
         resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        return cls(backends, policy=resolved_policy)
+        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
 
     def close(self) -> None:
         for backend in self.backends:
@@ -265,9 +287,16 @@ class Client:
 
 
 class AsyncClient:
-    def __init__(self, backends: Sequence[Backend], policy: Gate | None = None) -> None:
+    def __init__(
+        self,
+        backends: Sequence[Backend],
+        policy: Gate | None = None,
+        *,
+        on_low_confidence: Literal["accept", "raise"] = "accept",
+    ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
+        self.on_low_confidence = on_low_confidence
 
     async def decide(
         self, state: Content, questions: Mapping[str, Question], *, model: str | None = None
@@ -290,7 +319,7 @@ class AsyncClient:
             result, best = _decision(backend, response, None, self.policy, route, errors, best)
             if result is not None:
                 return result
-        return _finish(route, errors, best)
+        return _finish(route, errors, best, self.on_low_confidence)
 
     async def decide_batch(
         self,
@@ -349,11 +378,17 @@ class AsyncClient:
                 results,
             )
 
-        return _finish_batch(pending, routes, errors_by_state, bests, results)
+        return _finish_batch(
+            pending, routes, errors_by_state, bests, results, self.on_low_confidence
+        )
 
     @classmethod
     def from_env(
-        cls, env: Mapping[str, str] | None = None, policy: Gate | None = None
+        cls,
+        env: Mapping[str, str] | None = None,
+        policy: Gate | None = None,
+        *,
+        on_low_confidence: Literal["accept", "raise"] = "accept",
     ) -> AsyncClient:
         """Build an `AsyncClient` from an environment mapping.
 
@@ -365,7 +400,7 @@ class AsyncClient:
         backend_names, kwargs_by_name = _resolve_env_backends(resolved_env)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
         resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        return cls(backends, policy=resolved_policy)
+        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
 
     async def aclose(self) -> None:
         for backend in self.backends:

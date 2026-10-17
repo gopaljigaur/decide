@@ -57,6 +57,19 @@ class BadResponseError(BackendError):
     """The backend's response was unparsable or did not match the expected schema."""
 
 
+class LowConfidence(DecideError):
+    """No backend answered above the gate, and the client was told to abstain.
+
+    `response` is the best answer seen, so a caller can look at what was
+    rejected; `route` is how the chain got there.
+    """
+
+    def __init__(self, route: list[str], response: Response) -> None:
+        self.route = route
+        self.response = response
+        super().__init__(f"no backend answered above the gate: {route}")
+
+
 class AllBackendsFailed(DecideError):
     """Every backend in the route failed.
 

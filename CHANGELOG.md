@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.12 (2026-10-17)
+
+- `Client(..., on_low_confidence="raise")` abstains instead of returning an
+  answer that missed the gate, raising `LowConfidence` with the rejected
+  response and the route. A chain of local backends with this set never sends a
+  state anywhere, which is what a local-only deployment needs; the default is
+  unchanged.
+
 ## 0.2.11 (2026-10-17)
 
 - `docs/backends.md` scores the checkpoint table on the confidence each

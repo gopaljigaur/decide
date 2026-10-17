@@ -9,6 +9,7 @@ from decide.errors import (
     BadResponseError,
     ConfigError,
     DecideError,
+    LowConfidence,
     RateLimitError,
 )
 from decide.gate import Gate
@@ -27,7 +28,7 @@ from decide.types import (
     ScoreAnswer,
 )
 
-__version__ = "0.2.11"
+__version__ = "0.2.12"
 
 __all__ = [
     "AllBackendsFailed",
@@ -43,6 +44,7 @@ __all__ = [
     "ConfigError",
     "Content",
     "DecideError",
+    "LowConfidence",
     "CalibratedGate",
     "Calibration",
     "ConformalGate",
