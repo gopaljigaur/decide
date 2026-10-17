@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.10 (2026-10-17)
 
 - The gate now reads the backend's own `confidence` when it reports one,
   instead of always computing the top probability itself. The two differ: on
