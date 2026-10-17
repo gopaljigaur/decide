@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.9 (2026-10-17)
+
+- Correct what 0.2.6 said about the multilingual checkpoint. Its 0.527 on
+  yes/no questions was mostly the unnamed options: the same 150 rows with the
+  two options named score 0.853, against the English checkpoint's 0.887. The
+  English checkpoint stays the default, on calibration (0.049 against 0.103),
+  not on "barely above chance". `docs/backends.md` has both columns and the
+  third checkpoint.
+- Re-measured the README and `docs/` numbers on the current release of every
+  dependency, including laya-mlx 0.4.0, which answers identically to 0.1.0 and
+  is slower here: one Choice question goes from 15.6 ms to 20.9 ms.
+
 ## 0.2.8 (2026-10-17)
 
 - `laya_mlx` now reads the installed laya-mlx version for the `noul_labels`

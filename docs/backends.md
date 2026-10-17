@@ -87,19 +87,20 @@ ag_news (four-way `Choice`) and 150 of sst2 (yes/no `Noul`), MLX on an M4, with
 the method and per-row output in
 [system-one-bench](https://github.com/gopaljigaur/system-one-bench):
 
-| Checkpoint | ag_news | ECE | sst2 | ECE | p50 ag_news / sst2 |
-|---|---|---|---|---|---|
-| `aac6fef/laya-mlx` (English, the default) | 0.953 | **0.028** | 0.833 | **0.053** | 33.8 / 19.5 ms |
-| `aac6fef/laya-typed-decisions-mlx` | 0.953 | 0.126 | **0.847** | 0.143 | 31.3 / 20.2 ms |
-| `aac6fef/laya-multilingual-mlx` | 0.920 | 0.072 | 0.527 | 0.373 | **11.7 / 8.2 ms** |
+| Checkpoint | ag_news | ECE | sst2 | ECE | sst2, options named | ECE | p50 |
+|---|---|---|---|---|---|---|---|
+| `aac6fef/laya-mlx` (English, the default) | 0.953 | **0.028** | 0.833 | **0.053** | 0.887 | **0.049** | 33.9 ms |
+| `aac6fef/laya-typed-decisions-mlx` | 0.953 | 0.126 | **0.847** | 0.143 | **0.907** | 0.091 | 34.9 ms |
+| `aac6fef/laya-multilingual-mlx` | 0.920 | 0.072 | 0.527 | 0.373 | 0.853 | 0.103 | **13.9 ms** |
 
-English is the default because the gate reads confidence, and it is the only one
-whose confidence is close to honest on both question shapes. The multilingual
-checkpoint is three times faster and the only one trained for other languages,
-but it answers yes/no barely above chance, so pass it per backend when the input
-is not English instead of relying on it everywhere. The `laya` PyTorch backend's
-default, `convaiinnovations/laya`, is the same English weights and scores the
-same.
+English is the default because the gate reads confidence, and it is the best
+calibrated of the three on every task here. typed-decisions answers yes/no two
+points better and is three times worse calibrated. The multilingual checkpoint
+is the fastest and the only one trained for other languages; its 0.527 on
+unnamed yes/no options is mostly the names, since the same rows with the options
+named score 0.853, so pass it per backend for input that is not English. The
+`laya` PyTorch backend's default, `convaiinnovations/laya`, is the same English
+weights and scores the same.
 
 ### Other servers that speak the same protocol
 
