@@ -49,7 +49,7 @@ curl -s -X POST http://127.0.0.1:8811/v1/systemone \
     "refund": {"type": "noul", "noul": 0.8919}
   },
   "usage": {"input_tokens": 0, "output_tokens": 0},
-  "decide": {"backend": "laya_mlx", "latency_ms": 83.8, "route": ["laya_mlx:ok"]}
+  "decide": {"backend": "laya_mlx", "latency_ms": 69.0, "route": ["laya_mlx:ok"]}
 }
 ```
 

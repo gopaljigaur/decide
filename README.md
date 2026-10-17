@@ -39,7 +39,7 @@ the local one could not answer. Every response records the route it took.
 | **Readable routes** | `r.meta.route` is `['crossencoder:low_confidence:team=0.44<0.60', 'laya:ok']`, not a boolean. |
 | **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. [Limits](docs/typesafe-sdk.md). |
 | **A server and a CLI** | `decide serve` speaks TypeSafe's wire format; `decide ask` answers from the shell. |
-| **15.6 ms** | Median for one Choice question on an M4 with laya-mlx, in process. Measured, method in [Latency](#latency). |
+| **20.9 ms** | Median for one Choice question on an M4 with laya-mlx, in process. Measured, method in [Latency](#latency). |
 
 ## Install
 
@@ -91,7 +91,7 @@ decide ask "I had a rough day, everything broke" --noul "Is the writer doing wel
 NAME    TYPE    ANSWER  PROBABILITIES
 choice  choice  bad     good=0.01 bad=0.99
 noul    noul    false   0.01
-backend=laya_mlx route=laya_mlx:ok latency=45.2ms
+backend=laya_mlx route=laya_mlx:ok latency=56.5ms
 ```
 
 This is the real output of that command, run with `laya_mlx` installed and
@@ -131,7 +131,7 @@ r.scores["severity"].score  # 1.6284  (expected level index, 0..len(levels)-1)
 r.scores["severity"].probabilities  # [0.0802, 0.2112, 0.7086]
 r.nouls["refund"].noul  # 0.8919
 r.meta.backend  # "laya_mlx"
-r.meta.latency_ms  # 44.0
+r.meta.latency_ms  # 50.0
 r.meta.route  # ["laya_mlx:ok"]
 ```
 
@@ -165,20 +165,20 @@ you to install a local backend or set a hosted one's API key.
 
 ## Latency
 
-Measured on an Apple M4 (32 GB) with the `laya_mlx` backend on its default
-checkpoint, `aac6fef/laya-mlx`, in process, after three warm-up requests. One
-`Client.decide` call, timed by `meta.latency_ms`, 20 samples:
+Measured on an Apple M4 (32 GB) with the `laya_mlx` backend (laya-mlx 0.4.0)
+on its default checkpoint, `aac6fef/laya-mlx`, in process, after three warm-up
+requests. One `Client.decide` call, timed by `meta.latency_ms`, 20 samples:
 
 | Request | Median | Range |
 |---|---|---|
-| One Choice question | 15.6 ms | 15.3 to 17.1 ms |
-| Choice, Noul and Score in one call | 32.6 ms | 32.1 to 38.9 ms |
+| One Choice question | 20.9 ms | 19.4 to 24.0 ms |
+| Choice, Noul and Score in one call | 38.1 ms | 37.3 to 41.0 ms |
 
-Loading the model and answering the first request took 493 ms, once. A `decide`
-CLI invocation on the same machine takes about 0.5 s of wall clock, most of it
-interpreter startup and loading the model again, while the decision inside it
-measures 45 to 60 ms. Measure in process if you are comparing against a hosted
-API.
+Loading the model and answering the first request took 1,304 ms, once. A
+`decide` CLI invocation on the same machine takes 0.7 to 1.3 s of wall clock,
+most of it interpreter startup and loading the model again, while the decision
+inside it measures 56 to 144 ms. Measure in process if you are comparing
+against a hosted API.
 
 Your numbers will differ with the machine, the checkpoint and the length of
 the state, so measure before you rely on any of this. `--verbose` prints the
@@ -191,7 +191,7 @@ decide ask "I was charged twice" --choice billing,engineering --verbose
 ```
 NAME    TYPE    ANSWER   PROBABILITIES
 choice  choice  billing  billing=0.99 engineering=0.01
-backend=laya_mlx route=laya_mlx:ok latency=41.8ms
+backend=laya_mlx route=laya_mlx:ok latency=45.4ms
 ```
 
 That one is a cold call with no warm-up, which is why it is slower than the
