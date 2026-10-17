@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from decide.backends.laya import LayaBackend, _model_label
+from decide.backends.laya import LayaBackend, _model_label, _renders_noul_labels
 from decide.errors import ConfigError
 
 
@@ -62,5 +62,4 @@ class LayaMLXBackend(LayaBackend):
             agent = laya_mlx.load(model, **kwargs)
         self.agent = agent
         self.model = _model_label(model, None)
-        # laya-mlx renders the two noul options as "false"/"true" with no override.
-        self._supports_noul_labels = False
+        self._supports_noul_labels = _renders_noul_labels("laya_mlx", (0, 3, 0))

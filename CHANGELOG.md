@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.8 (2026-10-17)
+
+- `laya_mlx` now reads the installed laya-mlx version for the `noul_labels`
+  capability. laya-mlx renders a `labels` override since 0.3.0, and 0.2.7
+  refused labelled questions on every version of it. Checked against laya-mlx
+  0.4.0: the question that answers a constant 0.000 answers 0.979 with the
+  labels named, matching the PyTorch backend exactly.
+
 ## 0.2.7 (2026-10-17)
 
 - `Noul` takes `labels`, which renames the two options the model scores, for

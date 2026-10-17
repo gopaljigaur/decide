@@ -17,6 +17,7 @@ in order) and fall back to `BaseBackend`'s per-request loop when it is absent.
 
 from __future__ import annotations
 
+import importlib
 import time
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -27,17 +28,20 @@ from decide.types import Answer, Meta, Request, Response
 from decide.wire import from_wire_answers, to_wire_request
 
 
-def _renders_noul_labels() -> bool:
-    """Whether the installed laya renders a noul `labels` override, which it has since 0.3.8."""
+def _renders_noul_labels(package: str, minimum: tuple[int, int, int]) -> bool:
+    """Whether the installed `package` renders a noul `labels` override.
+
+    laya has since 0.3.8 and laya-mlx since 0.3.0; both ignored the field silently before.
+    """
     try:
-        import laya
+        module = importlib.import_module(package)
     except ImportError:  # pragma: no cover - an agent= was passed without the package
         return False
     try:
-        parts = tuple(int(piece) for piece in str(laya.__version__).split(".")[:3])
+        parts = tuple(int(piece) for piece in str(module.__version__).split(".")[:3])
     except (AttributeError, ValueError):
         return False
-    return parts >= (0, 3, 8)
+    return parts >= minimum
 
 
 def _model_label(model: str, subfolder: str | None) -> str:
@@ -176,7 +180,7 @@ class LayaBackend(BaseBackend):
             agent = laya.load(model, subfolder=subfolder, device=device)
         self.agent = agent
         self.model = _model_label(model, subfolder)
-        self._supports_noul_labels = _renders_noul_labels()
+        self._supports_noul_labels = _renders_noul_labels("laya", (0, 3, 8))
 
     def capabilities(self) -> Capabilities:
         return Capabilities(

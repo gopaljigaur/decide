@@ -75,9 +75,10 @@ route records the refusal:
 | Backend | `labels` |
 |---|---|
 | `laya` | rendered, with laya 0.3.8 or newer |
+| `laya_mlx` | rendered, with laya-mlx 0.3.0 or newer |
 | `typesafe`, `openrouter`, `openai_decisions` | sent to the server, which decides |
 | `llm` | named in the prompt |
-| `laya_mlx`, `crossencoder` | refused: neither can render them |
+| `crossencoder` | refused: a reranker has no slot for them |
 
 ### Which laya checkpoint
 

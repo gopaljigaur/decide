@@ -259,10 +259,16 @@ LABELLED = Request(
 )
 
 
-def test_laya_mlx_refuses_a_labelled_noul():
-    """laya-mlx renders false/true with no override, so answering would drop the labels."""
+def test_laya_mlx_refuses_a_labelled_noul(monkeypatch):
+    """Before 0.3.0 laya-mlx rendered false/true with no override, so answering would drop them."""
+    import sys
+    import types
+
     from decide.backends.laya_mlx import LayaMLXBackend
 
+    fake = types.ModuleType("laya_mlx")
+    fake.__version__ = "0.1.0"
+    monkeypatch.setitem(sys.modules, "laya_mlx", fake)
     backend = LayaMLXBackend(agent=FakeAgent())
     assert backend.capabilities().noul_labels is False
     with pytest.raises(BackendError, match="sentiment"):
@@ -272,7 +278,7 @@ def test_laya_mlx_refuses_a_labelled_noul():
 def test_laya_sends_noul_labels_when_the_package_renders_them(monkeypatch):
     import decide.backends.laya as mod
 
-    monkeypatch.setattr(mod, "_renders_noul_labels", lambda: True)
+    monkeypatch.setattr(mod, "_renders_noul_labels", lambda *a: True)
     agent = FakeAgent({"answers": {"sentiment": {"type": "noul", "noul": 0.98}}})
     backend = mod.LayaBackend(agent=agent)
 
@@ -285,7 +291,7 @@ def test_laya_sends_noul_labels_when_the_package_renders_them(monkeypatch):
 def test_laya_refuses_a_labelled_noul_on_a_package_too_old_to_render_them(monkeypatch):
     import decide.backends.laya as mod
 
-    monkeypatch.setattr(mod, "_renders_noul_labels", lambda: False)
+    monkeypatch.setattr(mod, "_renders_noul_labels", lambda *a: False)
     backend = mod.LayaBackend(agent=FakeAgent())
 
     with pytest.raises(BackendError, match="Noul labels"):
@@ -304,7 +310,22 @@ def test_renders_noul_labels_reads_the_package_version(monkeypatch, version, exp
     fake = types.ModuleType("laya")
     fake.__version__ = version
     monkeypatch.setitem(sys.modules, "laya", fake)
-    assert mod._renders_noul_labels() is expected
+    assert mod._renders_noul_labels("laya", (0, 3, 8)) is expected
+
+
+@pytest.mark.parametrize(("version", "expected"), [("0.3.0", True), ("0.2.0", False)])
+def test_laya_mlx_labels_follow_the_installed_laya_mlx(monkeypatch, version, expected):
+    """laya-mlx rendered false/true with no override until 0.3.0."""
+    import sys
+    import types
+
+    from decide.backends.laya_mlx import LayaMLXBackend
+
+    fake = types.ModuleType("laya_mlx")
+    fake.__version__ = version
+    monkeypatch.setitem(sys.modules, "laya_mlx", fake)
+    backend = LayaMLXBackend(agent=FakeAgent())
+    assert backend.capabilities().noul_labels is expected
 
 
 def test_laya_mlx_capabilities_and_batch():
