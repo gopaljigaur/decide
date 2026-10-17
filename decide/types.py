@@ -125,10 +125,15 @@ class Request:
 
 @dataclass(frozen=True)
 class ChoiceAnswer:
-    """`probabilities` are the backend's outputs. They are not guarantees of correctness."""
+    """`probabilities` are the backend's outputs. They are not guarantees of correctness.
+
+    `confidence` is what the backend reported, when it reported one. It is not
+    always the top probability: von and laya both report a lower number.
+    """
 
     choice: str
     probabilities: dict[str, float]
+    confidence: float | None = None
 
 
 @dataclass(frozen=True)
@@ -141,13 +146,19 @@ class ScoreAnswer:
     score: float
     probabilities: list[float]
     levels: list[str]
+    confidence: float | None = None
 
 
 @dataclass(frozen=True)
 class NoulAnswer:
-    """`noul` is the model output in [0, 1]. It is not a guarantee of correctness."""
+    """`noul` is the model output in [0, 1]. It is not a guarantee of correctness.
+
+    `confidence` is the backend's own, when it reported one; most compute
+    `max(noul, 1 - noul)`, which is what the gate falls back to.
+    """
 
     noul: float
+    confidence: float | None = None
 
 
 Answer = ChoiceAnswer | ScoreAnswer | NoulAnswer

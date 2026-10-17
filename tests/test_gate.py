@@ -8,6 +8,29 @@ def _resp(**answers):
     return Response(answers=answers, meta=Meta("fake", None, 0.0))
 
 
+def test_gate_reads_the_backend_s_own_confidence_when_there_is_one():
+    """A model that states its confidence means that number, not the top probability."""
+    r = Response(
+        answers={
+            "team": ChoiceAnswer("a", {"a": 0.91, "b": 0.09}, confidence=0.55),
+            "angry": NoulAnswer(0.8, confidence=0.6),
+        },
+        meta=Meta(backend="b", model=None, latency_ms=1.0),
+    )
+
+    assert Gate().confidence(r) == {"team": 0.55, "angry": 0.6}
+    assert Gate(min_confidence=0.7).passes(r)[0] is False
+
+
+def test_gate_falls_back_when_the_backend_reports_nothing():
+    r = Response(
+        answers={"team": ChoiceAnswer("a", {"a": 0.91, "b": 0.09}), "angry": NoulAnswer(0.8)},
+        meta=Meta(backend="b", model=None, latency_ms=1.0),
+    )
+
+    assert Gate().confidence(r) == {"team": 0.91, "angry": 0.8}
+
+
 def test_confidence_per_question_type():
     r = _resp(
         c=ChoiceAnswer("a", {"a": 0.6, "b": 0.4}),

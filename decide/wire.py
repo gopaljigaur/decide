@@ -179,6 +179,20 @@ def _numeric(value: Any, name: str, field: str) -> float:
     return float(value)
 
 
+def _reported_confidence(a: Mapping[str, Any], name: str) -> float | None:
+    """The backend's own `confidence`, when it sent one in range."""
+    value = a.get("confidence")
+    if value is None:
+        return None
+    confidence = _numeric(value, name, "confidence")
+    if not 0.0 <= confidence <= 1.0:
+        raise BadResponseError(
+            backend="wire",
+            message=f"question '{name}' confidence must be in [0, 1], got {confidence!r}",
+        )
+    return confidence
+
+
 def _numeric_mapping(value: Any, name: str, field: str) -> dict[str, float]:
     if not isinstance(value, Mapping):
         raise BadResponseError(
@@ -250,7 +264,7 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' choice {choice!r} is not among the candidates",
                 )
-            result[name] = ChoiceAnswer(choice, probs)
+            result[name] = ChoiceAnswer(choice, probs, _reported_confidence(a, name))
 
         elif isinstance(question, Score):
             if atype != "score":
@@ -272,7 +286,7 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
             else:
                 score = _numeric(score, name, "score")
             levels = [render_content(level) for level in question.criteria]
-            result[name] = ScoreAnswer(score, probs, levels)
+            result[name] = ScoreAnswer(score, probs, levels, _reported_confidence(a, name))
 
         elif isinstance(question, Noul):
             if atype != "noul":
@@ -280,7 +294,10 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                     backend="wire",
                     message=f"question '{name}' expected type 'noul', got {atype!r}",
                 )
-            result[name] = NoulAnswer(_numeric(_get_field(a, "noul", name), name, "noul"))
+            result[name] = NoulAnswer(
+                _numeric(_get_field(a, "noul", name), name, "noul"),
+                _reported_confidence(a, name),
+            )
 
         else:
             raise TypeError(f"unknown question type: {type(question)!r}")

@@ -417,6 +417,59 @@ def test_parse_wire_request_rejects_wrong_criteria_container_per_type():
         )
 
 
+def test_a_backend_s_own_confidence_is_kept():
+    """von and laya both report a confidence below their top probability."""
+    req = Request(
+        "s", {"team": Choice("q", ["a", "b"]), "sev": Score("q", ["lo", "hi"]), "angry": Noul("q")}
+    )
+    answers = from_wire_answers(
+        {
+            "team": {
+                "type": "choice",
+                "choice": "a",
+                "probabilities": {"a": 0.91, "b": 0.09},
+                "confidence": 0.88,
+            },
+            "sev": {
+                "type": "score",
+                "score": 0.9,
+                "probabilities": {"0": 0.1, "1": 0.9},
+                "confidence": 0.7,
+            },
+            "angry": {"type": "noul", "noul": 0.8, "confidence": 0.65},
+        },
+        req,
+    )
+    assert answers["team"].confidence == 0.88
+    assert answers["sev"].confidence == 0.7
+    assert answers["angry"].confidence == 0.65
+
+
+def test_an_answer_without_a_confidence_reports_none():
+    req = Request("s", {"team": Choice("q", ["a", "b"])})
+    answers = from_wire_answers(
+        {"team": {"type": "choice", "choice": "a", "probabilities": {"a": 0.91, "b": 0.09}}}, req
+    )
+    assert answers["team"].confidence is None
+
+
+@pytest.mark.parametrize("value", [1.4, -0.1, "high"])
+def test_a_confidence_outside_zero_to_one_is_rejected(value):
+    req = Request("s", {"team": Choice("q", ["a", "b"])})
+    with pytest.raises(BadResponseError, match="confidence"):
+        from_wire_answers(
+            {
+                "team": {
+                    "type": "choice",
+                    "choice": "a",
+                    "probabilities": {"a": 0.9, "b": 0.1},
+                    "confidence": value,
+                }
+            },
+            req,
+        )
+
+
 def test_noul_labels_round_trip_through_the_wire():
     req = Request(
         "s", {"q": Noul("Is it positive?", labels={"true": "positive", "false": "negative"})}

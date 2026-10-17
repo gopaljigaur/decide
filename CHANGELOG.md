@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- The gate now reads the backend's own `confidence` when it reports one,
+  instead of always computing the top probability itself. The two differ: on
+  one ag_news story von reports 0.877 against a top probability of 0.9077, and
+  laya reports 0.906 against 0.9779; on a two option choice laya has reported
+  0.5909 against 0.918. Every `Choice`, `Score` and `Noul` answer now carries
+  `confidence`, which is what the backend sent or `None`. Backends that report
+  nothing, such as the reranker, keep the computed fallback.
+
 ## 0.2.9 (2026-10-17)
 
 - Correct what 0.2.6 said about the multilingual checkpoint. Its 0.527 on

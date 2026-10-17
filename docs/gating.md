@@ -4,12 +4,26 @@
 from decide import Gate
 
 Gate(
-    min_confidence=0.0,  # top probability of a Choice, max(noul, 1-noul) for a Noul
+    min_confidence=0.0,  # the backend's own confidence, see below
     per_question=None,  # optional {"question_name": threshold} overrides
     per_type=None,  # optional {"choice"/"score"/"noul": threshold} overrides
     on_error="next",  # or "raise" to stop the chain on the first BackendError
 )
 ```
+
+## Which number the gate reads
+
+The backend's own `confidence` when it reports one, and the top probability of
+a `Choice` or `max(noul, 1 - noul)` of a `Noul` when it does not.
+
+Those are not the same number. On one ag_news story von reports 0.877 while its
+top probability is 0.9077, and laya reports 0.906 against 0.9779. On a two
+option choice laya has reported 0.5909 against a top probability of 0.918. A
+model that states a confidence means that number, so the gate uses it; the
+computed fallback is for backends that report nothing, such as the reranker.
+
+`answer.confidence` holds what the backend sent, or `None`, so a policy of your
+own can read either.
 
 For a question with a threshold set at more than one level, the most
 specific one wins: `per_question[name]`, else `per_type[<the question's

@@ -29,6 +29,10 @@ class Gate:
     def confidence(self, response: Response) -> dict[str, float]:
         """Calculate confidence for each non-Score answer.
 
+        The backend's own `confidence` when it reported one, since a model that
+        states its confidence means that number and not the top probability.
+        Otherwise:
+
         - ChoiceAnswer: max(probabilities.values())
         - NoulAnswer: max(noul, 1 - noul)
         - ScoreAnswer: not included (not gated)
@@ -36,9 +40,17 @@ class Gate:
         result = {}
         for name, answer in response.answers.items():
             if isinstance(answer, ChoiceAnswer):
-                result[name] = max(answer.probabilities.values(), default=0.0)
+                reported = answer.confidence
+                result[name] = (
+                    reported
+                    if reported is not None
+                    else max(answer.probabilities.values(), default=0.0)
+                )
             elif isinstance(answer, NoulAnswer):
-                result[name] = max(answer.noul, 1 - answer.noul)
+                reported = answer.confidence
+                result[name] = (
+                    reported if reported is not None else max(answer.noul, 1 - answer.noul)
+                )
             # ScoreAnswer is skipped (not gated)
         return result
 
