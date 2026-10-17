@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from decide.types import Answer, Meta, Request, Response
+from decide.errors import BackendError
+from decide.types import Answer, Meta, Noul, Request, Response
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,9 @@ class Capabilities:
     batch: bool = False
     local: bool = False
     max_choice_options: int | None = None
+    # False means the backend would answer a labelled Noul while dropping the labels,
+    # so it refuses the question instead and the chain can try the next backend.
+    noul_labels: bool = False
 
 
 @runtime_checkable
@@ -51,7 +55,19 @@ class BaseBackend:
     def capabilities(self) -> Capabilities:
         return Capabilities()
 
+    def _reject_unsupported(self, request: Request) -> None:
+        """Refuse a request this backend would answer by quietly dropping part of it."""
+        if self.capabilities().noul_labels:
+            return
+        named = [n for n, q in request.questions.items() if isinstance(q, Noul) and q.labels]
+        if named:
+            raise BackendError(
+                self.name,
+                f"backend does not support Noul labels, asked for {sorted(named)}",
+            )
+
     def decide(self, request: Request) -> Response:
+        self._reject_unsupported(request)
         start = time.perf_counter()
         answers, raw, model = self._decide(request)
         latency_ms = (time.perf_counter() - start) * 1000
@@ -70,6 +86,7 @@ class BaseBackend:
         raise NotImplementedError
 
     async def adecide(self, request: Request) -> Response:
+        self._reject_unsupported(request)
         start = time.perf_counter()
         answers, raw, model = await self._adecide(request)
         latency_ms = (time.perf_counter() - start) * 1000

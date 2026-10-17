@@ -387,6 +387,8 @@ class CrossEncoderBackend(BaseBackend):
         return answers, raw, self.model
 
     def decide_batch(self, requests: Sequence[Request]) -> list[Response]:
+        for request in requests:
+            self._reject_unsupported(request)
         start = time.perf_counter()
         per_request_tasks = [self._compile(request) for request in requests]
         all_pairs = [task.pair for tasks in per_request_tasks for task in tasks]

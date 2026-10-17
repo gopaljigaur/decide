@@ -59,6 +59,26 @@ auto-selected at all.
 | `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
 | `DECIDE_API_KEY` | `decide serve` | Bearer token required to call the server, when `--api-key` is not passed. The flag takes precedence over this variable. |
 
+### Noul labels
+
+`Noul("Is the sentiment positive?", labels={"true": "positive", "false": "negative"})`
+renames the two options the model scores. The default `true`/`false` pair carries
+no task meaning, and the published laya checkpoints answer a constant 0.000 at
+confidence 1.0 to a `noul` question containing the word "positive" until the
+labels are named ([laya#1244](https://github.com/NandhaKishorM/laya/issues/1244)).
+Naming them takes that question from 0.000 to 0.979 on a positive review.
+
+Not every backend can carry them. One that would answer while dropping them
+refuses the question instead, so a chain hands it to the next backend and the
+route records the refusal:
+
+| Backend | `labels` |
+|---|---|
+| `laya` | rendered, with laya 0.3.8 or newer |
+| `typesafe`, `openrouter`, `openai_decisions` | sent to the server, which decides |
+| `llm` | named in the prompt |
+| `laya_mlx`, `crossencoder` | refused: neither can render them |
+
 ### Which laya checkpoint
 
 Three are published and they are not interchangeable. Measured on 150 rows of

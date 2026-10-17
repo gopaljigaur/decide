@@ -38,6 +38,8 @@ def _wire_question(question: Choice | Score | Noul) -> dict[str, Any]:
         w: dict[str, Any] = {"type": "noul", "instructions": question.instructions}
         if question.criteria is not None:
             w["criteria"] = dict(question.criteria)
+        if question.labels is not None:
+            w["labels"] = dict(question.labels)
         return w
     raise TypeError(f"unknown question type: {type(question)!r}")
 
@@ -96,9 +98,12 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
         return Score(_wire_instructions(wire), list(criteria))
 
     if qtype == "noul":
+        labels = wire.get("labels")
+        if labels is not None and not isinstance(labels, Mapping):
+            raise ValueError(f"question '{name}' labels must be a mapping of 'true' and 'false'")
         criteria = wire.get("criteria")
         if criteria is None:
-            return Noul(_wire_instructions(wire))
+            return Noul(_wire_instructions(wire), labels=labels)
         if isinstance(criteria, Mapping):
             criteria = dict(criteria)
         elif isinstance(criteria, str | bytes) or not isinstance(criteria, Sequence):
@@ -108,7 +113,7 @@ def _parse_wire_question(name: str, wire: Any) -> Question:
             )
         else:
             criteria = list(criteria)
-        return Noul(_wire_instructions(wire), criteria)
+        return Noul(_wire_instructions(wire), criteria, labels)
 
     raise ValueError(f"question '{name}' has unknown type {qtype!r}")
 

@@ -253,6 +253,60 @@ def test_laya_mlx_predict_called_with_wire_questions_and_state():
     assert r.meta.model == "aac6fef/laya-mlx"
 
 
+LABELLED = Request(
+    "this review was wonderful",
+    {"sentiment": Noul("Is it positive?", labels={"true": "positive", "false": "negative"})},
+)
+
+
+def test_laya_mlx_refuses_a_labelled_noul():
+    """laya-mlx renders false/true with no override, so answering would drop the labels."""
+    from decide.backends.laya_mlx import LayaMLXBackend
+
+    backend = LayaMLXBackend(agent=FakeAgent())
+    assert backend.capabilities().noul_labels is False
+    with pytest.raises(BackendError, match="sentiment"):
+        backend.decide(LABELLED)
+
+
+def test_laya_sends_noul_labels_when_the_package_renders_them(monkeypatch):
+    import decide.backends.laya as mod
+
+    monkeypatch.setattr(mod, "_renders_noul_labels", lambda: True)
+    agent = FakeAgent({"answers": {"sentiment": {"type": "noul", "noul": 0.98}}})
+    backend = mod.LayaBackend(agent=agent)
+
+    assert backend.capabilities().noul_labels is True
+    backend.decide(LABELLED)
+    _, questions = agent.calls[0]
+    assert questions["sentiment"]["labels"] == {"true": "positive", "false": "negative"}
+
+
+def test_laya_refuses_a_labelled_noul_on_a_package_too_old_to_render_them(monkeypatch):
+    import decide.backends.laya as mod
+
+    monkeypatch.setattr(mod, "_renders_noul_labels", lambda: False)
+    backend = mod.LayaBackend(agent=FakeAgent())
+
+    with pytest.raises(BackendError, match="Noul labels"):
+        backend.decide(LABELLED)
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"), [("0.3.8", True), ("0.4.9", True), ("0.3.7", False), ("nope", False)]
+)
+def test_renders_noul_labels_reads_the_package_version(monkeypatch, version, expected):
+    import sys
+    import types
+
+    import decide.backends.laya as mod
+
+    fake = types.ModuleType("laya")
+    fake.__version__ = version
+    monkeypatch.setitem(sys.modules, "laya", fake)
+    assert mod._renders_noul_labels() is expected
+
+
 def test_laya_mlx_capabilities_and_batch():
     from decide.backends.laya_mlx import LayaMLXBackend
 

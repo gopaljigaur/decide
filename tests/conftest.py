@@ -44,16 +44,18 @@ class FakeBackend(BaseBackend):
         fail: BackendError | None = None,
         confidence: float = 0.9,
         batch: bool = False,
+        noul_labels: bool = False,
     ) -> None:
         self.name = name
         self.answers = answers
         self.fail = fail
         self.confidence = confidence
         self.batch = batch
+        self.noul_labels = noul_labels
         self.calls: list[Request] = []
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(batch=self.batch)
+        return Capabilities(batch=self.batch, noul_labels=self.noul_labels)
 
     def _fabricate(self, question: Question) -> Answer:
         if isinstance(question, Choice):

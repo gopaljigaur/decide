@@ -417,6 +417,32 @@ def test_parse_wire_request_rejects_wrong_criteria_container_per_type():
         )
 
 
+def test_noul_labels_round_trip_through_the_wire():
+    req = Request(
+        "s", {"q": Noul("Is it positive?", labels={"true": "positive", "false": "negative"})}
+    )
+    wire = to_wire_request(req)
+
+    assert wire["questions"]["q"]["labels"] == {"true": "positive", "false": "negative"}
+    assert parse_wire_request(wire).questions["q"].labels == {
+        "true": "positive",
+        "false": "negative",
+    }
+
+
+def test_a_noul_without_labels_sends_no_labels_key():
+    assert "labels" not in to_wire_request(Request("s", {"q": Noul("q")}))["questions"]["q"]
+
+
+def test_parse_wire_request_rejects_non_mapping_noul_labels():
+    body = {
+        "state": "s",
+        "questions": {"q": {"type": "noul", "instructions": "i", "labels": ["a", "b"]}},
+    }
+    with pytest.raises(ValueError, match="labels"):
+        parse_wire_request(body)
+
+
 def test_parse_wire_request_accepts_list_shaped_choice_and_noul_criteria():
     parsed = parse_wire_request(
         {

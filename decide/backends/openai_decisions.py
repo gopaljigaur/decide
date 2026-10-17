@@ -84,7 +84,7 @@ class OpenAIDecisionsBackend(HttpClientMixin, BaseBackend):
         self._aclient: httpx.AsyncClient | None = None
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(batch=False, local=False)
+        return Capabilities(batch=False, local=False, noul_labels=True)
 
     def _resolved_model(self, request: Request) -> str:
         return request.model or self.model or self.DEFAULT_MODEL

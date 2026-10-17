@@ -38,6 +38,13 @@ def test_prompt_mentions_every_candidate_and_level():
         assert s in p
 
 
+def test_prompt_names_noul_labels_when_they_are_set():
+    req = Request("s", {"q": Noul("Is it positive?", labels={"true": "pos", "false": "neg"})})
+    p = build_prompt(req)
+    assert "'pos' for yes" in p
+    assert "'neg' for no" in p
+
+
 def test_parses_and_normalises_model_json():
     seen = {}
 

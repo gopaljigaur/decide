@@ -27,6 +27,19 @@ from decide.types import Answer, Meta, Request, Response
 from decide.wire import from_wire_answers, to_wire_request
 
 
+def _renders_noul_labels() -> bool:
+    """Whether the installed laya renders a noul `labels` override, which it has since 0.3.8."""
+    try:
+        import laya
+    except ImportError:  # pragma: no cover - an agent= was passed without the package
+        return False
+    try:
+        parts = tuple(int(piece) for piece in str(laya.__version__).split(".")[:3])
+    except (AttributeError, ValueError):
+        return False
+    return parts >= (0, 3, 8)
+
+
 def _model_label(model: str, subfolder: str | None) -> str:
     """`Meta.model`: the requested model id, plus '/subfolder' when one was given."""
     return model if subfolder is None else f"{model}/{subfolder}"
@@ -163,9 +176,14 @@ class LayaBackend(BaseBackend):
             agent = laya.load(model, subfolder=subfolder, device=device)
         self.agent = agent
         self.model = _model_label(model, subfolder)
+        self._supports_noul_labels = _renders_noul_labels()
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(local=True, batch=hasattr(self.agent, "predict_batch"))
+        return Capabilities(
+            local=True,
+            batch=hasattr(self.agent, "predict_batch"),
+            noul_labels=self._supports_noul_labels,
+        )
 
     def _decide(self, request: Request) -> tuple[dict[str, Answer], Any, None]:
         return _decide_with_agent(self.agent, self.name, request)

@@ -65,10 +65,16 @@ class Noul:
     `Sequence` (e.g. `["yes it is", "no it is not"]`) is also accepted and
     normalized positionally: the first element becomes 'true', the second
     (if present) becomes 'false'.
+
+    `labels` renames the two options themselves, e.g. `{"true": "positive",
+    "false": "negative"}`. The default pair carries no task meaning, and some
+    models answer a constant with it. Backends that would drop labels refuse
+    the question instead; [Backends](../docs/backends.md) says which.
     """
 
     instructions: Content
     criteria: Mapping[str, Content] | Sequence[str] | None = None
+    labels: Mapping[str, str] | Sequence[str] | None = None
 
     def __post_init__(self) -> None:
         if self.criteria is not None:
@@ -84,6 +90,22 @@ class Noul:
             if set(self.criteria) - {"true", "false"} or not self.criteria:
                 raise ValueError("Noul.criteria keys must be 'true' and/or 'false'")
             object.__setattr__(self, "criteria", _frozen_mapping(self.criteria))
+        if self.labels is not None:
+            labels = self.labels
+            if not isinstance(labels, Mapping):
+                if len(labels) != 2 or any(not isinstance(a, str) for a in labels):
+                    raise ValueError("Noul.labels as a sequence must be 2 strings, true then false")
+                labels = dict(zip(("true", "false"), labels, strict=True))
+            if set(labels) != {"true", "false"} or any(
+                not isinstance(a, str) for a in labels.values()
+            ):
+                raise ValueError("Noul.labels must name both 'true' and 'false' with strings")
+            true_label, false_label = labels["true"].strip(), labels["false"].strip()
+            if not true_label or not false_label or true_label == false_label:
+                raise ValueError("Noul.labels must be distinct and non-empty")
+            object.__setattr__(
+                self, "labels", _frozen_mapping({"true": true_label, "false": false_label})
+            )
 
 
 Question = Choice | Score | Noul

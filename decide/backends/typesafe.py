@@ -40,7 +40,7 @@ class TypeSafeBackend(HttpClientMixin, BaseBackend):
         self._aclient: httpx.AsyncClient | None = None
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(batch=False, local=False)
+        return Capabilities(batch=False, local=False, noul_labels=True)
 
     @property
     def _headers(self) -> dict[str, str]:

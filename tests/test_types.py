@@ -83,6 +83,31 @@ def test_noul_rejects_non_string_entries_in_list_criteria():
         Noul("q", [1, 2])
 
 
+def test_noul_labels_normalize_from_a_mapping_or_a_pair():
+    assert Noul("q", labels={"true": "positive", "false": "negative"}).labels == {
+        "true": "positive",
+        "false": "negative",
+    }
+    assert Noul("q", labels=["yes", "no"]).labels == {"true": "yes", "false": "no"}
+    assert Noul("q").labels is None
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        {"true": "positive"},
+        {"true": "same", "false": "same"},
+        {"true": "positive", "false": "  "},
+        {"true": "positive", "false": 1},
+        ["only one"],
+        ["a", "b", "c"],
+    ],
+)
+def test_noul_rejects_labels_that_do_not_name_both_sides(labels):
+    with pytest.raises(ValueError, match="labels"):
+        Noul("q", labels=labels)
+
+
 def test_request_needs_questions_with_names():
     with pytest.raises(ValueError, match="questions"):
         Request("s", {})

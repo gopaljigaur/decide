@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.7 (2026-10-17)
+
+- `Noul` takes `labels`, which renames the two options the model scores, for
+  example `labels={"true": "positive", "false": "negative"}`. The default
+  `true`/`false` pair carries no task meaning: the published laya checkpoints
+  answer a constant 0.000 at confidence 1.0 to a question containing the word
+  "positive" until the labels are named, and naming them takes that question
+  from 0.000 to 0.979 on a positive review.
+- A backend that would answer while dropping those labels now refuses the
+  question, so the chain hands it to the next backend instead of returning a
+  confident wrong answer. `laya_mlx` and `crossencoder` cannot render them;
+  `laya` can since laya 0.3.8; the HTTP backends send them on; the `llm`
+  backend names them in its prompt. `Capabilities` carries the new
+  `noul_labels` flag, and `docs/backends.md` has the table.
+
 ## 0.2.6 (2026-10-17)
 
 - `laya_mlx` now defaults to `aac6fef/laya-mlx`, the English checkpoint, instead

@@ -62,3 +62,5 @@ class LayaMLXBackend(LayaBackend):
             agent = laya_mlx.load(model, **kwargs)
         self.agent = agent
         self.model = _model_label(model, None)
+        # laya-mlx renders the two noul options as "false"/"true" with no override.
+        self._supports_noul_labels = False

@@ -69,6 +69,11 @@ def build_prompt(request: Request) -> str:
                 lines.append(f"    {i}. {render_content(level)}")
         elif isinstance(question, Noul):
             lines.append(f"- {name} (noul): {render_content(question.instructions)}")
+            if question.labels:
+                lines.append(
+                    f"    the two options are named {question.labels['true']!r} for yes "
+                    f"and {question.labels['false']!r} for no"
+                )
             if question.criteria:
                 for key, description in question.criteria.items():
                     lines.append(f"    {key}: {render_content(description)}")
@@ -282,7 +287,7 @@ class LLMBackend(HttpClientMixin, BaseBackend):
         self._aclient: httpx.AsyncClient | None = None
 
     def capabilities(self) -> Capabilities:
-        return Capabilities(local=False)
+        return Capabilities(local=False, noul_labels=True)
 
     @property
     def _headers(self) -> dict[str, str]:

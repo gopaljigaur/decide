@@ -507,6 +507,18 @@ def test_from_env_openai_decisions_needs_the_key_when_named(monkeypatch):
         Client.from_env(env={"DECIDE_BACKENDS": "openai_decisions"})
 
 
+def test_a_backend_that_cannot_express_noul_labels_hands_the_question_on():
+    cheap = FakeBackend("cheap")
+    good = FakeBackend("good", noul_labels=True)
+    question = {"q": Noul("Is it positive?", labels={"true": "positive", "false": "negative"})}
+
+    r = Client([cheap, good]).decide("s", question)
+
+    assert r.meta.backend == "good"
+    assert r.meta.route == ["cheap:error", "good:ok"]
+    assert cheap.calls == []
+
+
 def test_from_env_laya_kwargs(monkeypatch):
     import decide.client as mod
 
