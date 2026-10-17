@@ -83,24 +83,26 @@ route records the refusal:
 ### Which laya checkpoint
 
 Three are published and they are not interchangeable. Measured on 150 rows of
-ag_news (four-way `Choice`) and 150 of sst2 (yes/no `Noul`), MLX on an M4, with
-the method and per-row output in
+ag_news (four-way `Choice`) and 150 of sst2 (yes/no `Noul`), MLX on an M4, ECE
+scored on the confidence the checkpoint reports, with the method and per-row
+output in
 [system-one-bench](https://github.com/gopaljigaur/system-one-bench):
 
 | Checkpoint | ag_news | ECE | sst2 | ECE | sst2, options named | ECE | p50 |
 |---|---|---|---|---|---|---|---|
-| `aac6fef/laya-mlx` (English, the default) | 0.953 | **0.028** | 0.833 | **0.053** | 0.887 | **0.049** | 33.9 ms |
-| `aac6fef/laya-typed-decisions-mlx` | 0.953 | 0.126 | **0.847** | 0.143 | **0.907** | 0.091 | 34.9 ms |
-| `aac6fef/laya-multilingual-mlx` | 0.920 | 0.072 | 0.527 | 0.373 | 0.853 | 0.103 | **13.9 ms** |
+| `aac6fef/laya-mlx` (English, the default) | 0.953 | 0.106 | 0.833 | **0.053** | 0.887 | **0.049** | 39.0 ms |
+| `aac6fef/laya-typed-decisions-mlx` | 0.953 | 0.365 | **0.847** | 0.143 | **0.907** | 0.091 | 37.8 ms |
+| `aac6fef/laya-multilingual-mlx` | 0.920 | **0.047** | 0.527 | 0.373 | 0.853 | 0.103 | **15.0 ms** |
 
-English is the default because the gate reads confidence, and it is the best
-calibrated of the three on every task here. typed-decisions answers yes/no two
-points better and is three times worse calibrated. The multilingual checkpoint
-is the fastest and the only one trained for other languages; its 0.527 on
-unnamed yes/no options is mostly the names, since the same rows with the options
-named score 0.853, so pass it per backend for input that is not English. The
-`laya` PyTorch backend's default, `convaiinnovations/laya`, is the same English
-weights and scores the same.
+English is the default: it is the best calibrated of the three on both yes/no
+tasks, which is what the gate reads, and it ties for the best accuracy on the
+four-way choice. The multilingual checkpoint is the best calibrated on that
+choice task and the fastest, and it is the only one trained for other languages,
+so pass it per backend for input that is not English; its 0.527 on unnamed
+yes/no options is mostly the names, since the same rows with the options named
+score 0.853. typed-decisions answers yes/no two points better than English and
+is three times worse calibrated on it. The `laya` PyTorch backend's default,
+`convaiinnovations/laya`, is the same English weights and scores the same.
 
 ### Other servers that speak the same protocol
 

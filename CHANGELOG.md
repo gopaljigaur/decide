@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `docs/backends.md` scores the checkpoint table on the confidence each
+  checkpoint reports, which is what 0.2.10 made the gate read. The ag_news
+  column moves: English 0.028 to 0.106, typed-decisions 0.126 to 0.365,
+  multilingual 0.072 to 0.047. The yes/no columns are unchanged. English is
+  still the default, on yes/no calibration; the multilingual checkpoint is the
+  best calibrated of the three on a four-way choice.
+
 ## 0.2.10 (2026-10-17)
 
 - The gate now reads the backend's own `confidence` when it reports one,
