@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.11 (2026-10-17)
 
 - `docs/backends.md` scores the checkpoint table on the confidence each
   checkpoint reports, which is what 0.2.10 made the gate read. The ag_news
