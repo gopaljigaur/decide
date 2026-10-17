@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.6 (2026-10-15)
+## 0.2.6 (2026-10-17)
 
 - `laya_mlx` now defaults to `aac6fef/laya-mlx`, the English checkpoint, instead
   of the multilingual one. Measured on 150 rows each of ag_news and sst2, the
