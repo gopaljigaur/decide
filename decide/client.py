@@ -153,10 +153,13 @@ class Client:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
+        local_only: bool | None = None,
     ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
         self.on_low_confidence = on_low_confidence
+        if _local_only(os.environ, local_only):
+            _refuse_hosted(self.backends)
 
     def decide(
         self, state: Content, questions: Mapping[str, Question], *, model: str | None = None
@@ -260,6 +263,7 @@ class Client:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
+        local_only: bool | None = None,
     ) -> Client:
         """Build a `Client` from an environment mapping.
 
@@ -268,10 +272,16 @@ class Client:
         configure from something else, e.g. in tests.
         """
         resolved_env = env if env is not None else os.environ
-        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env)
+        only_local = _local_only(resolved_env, local_only)
+        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env, only_local)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
         resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
+        return cls(
+            backends,
+            policy=resolved_policy,
+            on_low_confidence=on_low_confidence,
+            local_only=only_local,
+        )
 
     def close(self) -> None:
         for backend in self.backends:
@@ -293,10 +303,13 @@ class AsyncClient:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
+        local_only: bool | None = None,
     ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
         self.on_low_confidence = on_low_confidence
+        if _local_only(os.environ, local_only):
+            _refuse_hosted(self.backends)
 
     async def decide(
         self, state: Content, questions: Mapping[str, Question], *, model: str | None = None
@@ -389,6 +402,7 @@ class AsyncClient:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
+        local_only: bool | None = None,
     ) -> AsyncClient:
         """Build an `AsyncClient` from an environment mapping.
 
@@ -397,10 +411,16 @@ class AsyncClient:
         configure from something else, e.g. in tests.
         """
         resolved_env = env if env is not None else os.environ
-        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env)
+        only_local = _local_only(resolved_env, local_only)
+        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env, only_local)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
         resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
+        return cls(
+            backends,
+            policy=resolved_policy,
+            on_low_confidence=on_low_confidence,
+            local_only=only_local,
+        )
 
     async def aclose(self) -> None:
         for backend in self.backends:
@@ -476,8 +496,36 @@ def _auto_local_kwargs(env: Mapping[str, str]) -> dict[str, Any]:
     return {}
 
 
+def _refuse_hosted(backends: Sequence[Backend]) -> None:
+    """Raise unless every backend answers in process.
+
+    A backend that does not say it is local is treated as hosted, so a custom one has to
+    opt in through `Capabilities(local=True)`.
+    """
+    hosted = [b.name for b in backends if not b.capabilities().local]
+    if hosted:
+        raise ConfigError(
+            f"local only is on and these backends send the state to a server: {hosted}"
+        )
+
+
+_LOCAL_ONLY_ENV = "DECIDE_LOCAL_ONLY"
+
+# Backends that answer in process. Anything else sends the state to a server.
+_LOCAL_BACKENDS = frozenset({"laya", "laya_mlx", "crossencoder"})
+
+
+def _local_only(env: Mapping[str, str] | None, explicit: bool | None) -> bool:
+    """`local_only=` when given, else `DECIDE_LOCAL_ONLY` set to anything but 0."""
+    if explicit is not None:
+        return explicit
+    value = (env or {}).get(_LOCAL_ONLY_ENV, "")
+    return bool(value) and value != "0"
+
+
 def _resolve_env_backends(
     env: Mapping[str, str] | None,
+    local_only: bool = False,
 ) -> tuple[list[str], dict[str, dict[str, Any]]]:
     env = env or {}
 
@@ -490,6 +538,13 @@ def _resolve_env_backends(
             if n and n not in seen:
                 seen.add(n)
                 names.append(n)
+        if local_only:
+            hosted = [n for n in names if n not in _LOCAL_BACKENDS]
+            if hosted:
+                raise ConfigError(
+                    f"DECIDE_BACKENDS names {hosted} while local only is on; "
+                    f"local backends are {sorted(_LOCAL_BACKENDS)}"
+                )
         kwargs_by_name = {name: _kwargs_for(name, env) for name in names}
         return names, kwargs_by_name
 
@@ -504,6 +559,14 @@ def _resolve_env_backends(
     elif availability.get("laya"):
         names.append("laya")
         kwargs_by_name["laya"] = _auto_local_kwargs(env)
+
+    if local_only:
+        if not names:
+            raise ConfigError(
+                "local only is on and no local backend is installed; install one with "
+                'uv tool install "pydecide[mlx]"  (Apple Silicon) or "pydecide[laya]"'
+            )
+        return names, kwargs_by_name
 
     if "TYPESAFE_API_KEY" in env:
         names.append("typesafe")

@@ -35,9 +35,39 @@ except LowConfidence as abstained:
 ```
 
 `on_low_confidence` defaults to `"accept"`, which returns the best answer seen
-with `"<name>:accepted_low_confidence"` on the route. With `"raise"` nothing
-leaves the machine and a low answer is an outcome you handle, not a reason to
-call out.
+with `"<name>:accepted_low_confidence"` on the route. With `"raise"` a low answer
+is an outcome you handle instead of a reason to call out.
+
+A chain with one backend has nowhere to hand off to, so a low answer ends the
+chain either way: accepted with `"<name>:accepted_low_confidence"`, or raised as
+`LowConfidence`. Escalation is what the next backend is for, and there is no
+next backend.
+
+### Enforcing it for a whole deployment
+
+`Client.from_env()` adds a hosted backend whenever its key is in the
+environment, including a key exported for something else. Set
+`DECIDE_LOCAL_ONLY=1`, or pass `local_only=True`, and the library refuses to:
+
+```bash
+DECIDE_LOCAL_ONLY=1 python -c "
+from decide import Client
+print([b.name for b in Client.from_env().backends])"
+# ['laya_mlx']            with TYPESAFE_API_KEY, OPENROUTER_API_KEY and OPENAI_API_KEY all set
+```
+
+Without the flag that same environment builds
+`['laya_mlx', 'typesafe', 'openrouter', 'openai_decisions', 'llm']`. With it:
+
+- the hosted backends are not added, whatever keys are present
+- naming one in `DECIDE_BACKENDS` raises `ConfigError` instead of being honoured
+- passing one to `Client(...)` raises `ConfigError`, since the check is on the
+  backends themselves, not on how they were chosen
+- a backend that does not report `Capabilities(local=True)` counts as hosted, so
+  a backend of your own has to say so
+
+It is one environment variable, so it belongs in the deployment rather than in
+every call site.
 
 ## Which number the gate reads
 

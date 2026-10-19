@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.13 (2026-10-19)
+
+- `DECIDE_LOCAL_ONLY=1`, or `local_only=True`, refuses every backend that sends
+  the state to a server. `from_env` stops adding hosted backends whose keys
+  happen to be in the environment, naming one in `DECIDE_BACKENDS` raises
+  `ConfigError`, and so does passing one to `Client(...)`, since the check reads
+  each backend's `Capabilities.local`. One environment variable makes a
+  deployment local only, instead of every call site having to be written that
+  way.
+- `docs/gating.md` says what a single-backend chain does when its answer misses
+  the gate: there is no next backend, so the answer is accepted or raised,
+  never escalated.
+
 ## 0.2.12 (2026-10-17)
 
 - `Client(..., on_low_confidence="raise")` abstains instead of returning an

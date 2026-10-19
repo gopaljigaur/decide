@@ -46,6 +46,7 @@ auto-selected at all.
 
 | Variable | Backend | Meaning |
 |---|---|---|
+| `DECIDE_LOCAL_ONLY` | all | `1` refuses every backend that sends the state to a server, whatever keys are set. See [Gating](gating.md). |
 | `DECIDE_LOCAL_MODEL` | `laya`, `laya_mlx` | Overrides the default Hugging Face repo id (or local path) of the model to load. Optional: omit it and the installed local backend auto-selects with its own default model. |
 | `TYPESAFE_API_KEY` | `typesafe` | API key, sent as `Authorization: Bearer`. Required to auto-select `typesafe`. |
 | `TYPESAFE_BASE_URL` | `typesafe` | Overrides the default `https://api.typesafe.ai`. |

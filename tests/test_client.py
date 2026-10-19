@@ -1,6 +1,8 @@
 import pytest
 
+import decide.client as client_mod
 from decide import AsyncClient, Choice, ChoiceAnswer, Client, Gate, Noul, NoulAnswer
+from decide.backends.base import Capabilities
 from decide.errors import AllBackendsFailed, BackendError, ConfigError, LowConfidence
 from tests.conftest import FakeBackend
 
@@ -10,7 +12,10 @@ Q = {"team": Choice("Which team?", {"billing": None, "eng": None}), "refund": No
 def _capturing_loader(captured):
     def _load(name, **kw):
         captured[name] = kw
-        return FakeBackend(name)
+        backend = FakeBackend(name)
+        if name in client_mod._LOCAL_BACKENDS:
+            backend.capabilities = lambda: Capabilities(local=True)  # type: ignore[method-assign]
+        return backend
 
     return _load
 
@@ -505,6 +510,67 @@ def test_from_env_openai_decisions_model_and_opt_out(monkeypatch):
 def test_from_env_openai_decisions_needs_the_key_when_named(monkeypatch):
     with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
         Client.from_env(env={"DECIDE_BACKENDS": "openai_decisions"})
+
+
+def test_local_only_drops_hosted_backends_the_environment_would_have_added(monkeypatch):
+    """The keys stay exported for other tools; the chain still answers on the machine."""
+    import decide.client as mod
+
+    captured = {}
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
+    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": True})
+
+    env = {"OPENAI_API_KEY": "sk-x", "TYPESAFE_API_KEY": "k", "OPENROUTER_API_KEY": "r"}
+    assert [b.name for b in Client.from_env(env=env).backends] == [
+        "laya_mlx",
+        "typesafe",
+        "openrouter",
+        "openai_decisions",
+        "llm",
+    ]
+    only = Client.from_env(env={**env, "DECIDE_LOCAL_ONLY": "1"})
+    assert [b.name for b in only.backends] == ["laya_mlx"]
+
+
+def test_local_only_refuses_a_hosted_backend_named_explicitly(monkeypatch):
+    import decide.client as mod
+
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader({}))
+    with pytest.raises(ConfigError, match="typesafe"):
+        Client.from_env(env={"DECIDE_BACKENDS": "laya_mlx,typesafe", "DECIDE_LOCAL_ONLY": "1"})
+
+
+def test_local_only_refuses_a_hosted_backend_passed_to_the_constructor(monkeypatch):
+    monkeypatch.setenv("DECIDE_LOCAL_ONLY", "1")
+    with pytest.raises(ConfigError, match="send the state to a server"):
+        Client([FakeBackend("typesafe")])
+
+
+def test_local_only_accepts_a_backend_that_declares_itself_local(monkeypatch):
+    monkeypatch.setenv("DECIDE_LOCAL_ONLY", "1")
+    local = FakeBackend("laya")
+    local.capabilities = lambda: Capabilities(local=True)  # type: ignore[method-assign]
+    assert Client([local]).backends == [local]
+
+
+def test_local_only_needs_a_local_backend_to_exist(monkeypatch):
+    import decide.client as mod
+
+    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
+    with pytest.raises(ConfigError, match="no local backend is installed"):
+        Client.from_env(env={"DECIDE_LOCAL_ONLY": "1", "OPENAI_API_KEY": "sk-x"})
+
+
+def test_the_argument_beats_the_environment(monkeypatch):
+    import decide.client as mod
+
+    monkeypatch.setattr(mod, "load_backend", _capturing_loader({}))
+    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": True})
+    env = {"DECIDE_LOCAL_ONLY": "1", "TYPESAFE_API_KEY": "k"}
+    assert [b.name for b in Client.from_env(env=env, local_only=False).backends] == [
+        "laya_mlx",
+        "typesafe",
+    ]
 
 
 def test_a_local_only_chain_can_abstain_instead_of_accepting_a_low_answer():
