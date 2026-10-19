@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.16 (2026-10-19)
+
+- Record decisions in production and fit a threshold from them. `Client(...,
+  recorder=JsonlRecorder(path))` writes one row per decision with the
+  probabilities, the reported confidence, the route and the latency;
+  `record_outcome(path, id, {...})` attaches what actually turned out to be
+  right; `rows_from` joins the two into exactly what `fit_temperature` and
+  `fit_conformal_quantile` take. `decide fit <file> <question>` prints the
+  fitted values plus what each threshold would have accepted and how often it
+  was right, which is the table that says whether a gate is safe to turn on.
+  Recording never fails a decision: a recorder that raises is ignored.
+- `decide fit` also prints the range of confidence actually reported, since a
+  threshold table of zeros usually means every threshold sits above what the
+  backend reports.
+
 ## 0.2.15 (2026-10-19)
 
 - The README names `DECIDE_LOCAL_ONLY`, in the feature table and in the

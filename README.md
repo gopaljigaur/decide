@@ -37,6 +37,7 @@ the local one could not answer. Every response records the route it took.
 | **One API, seven backends** | Local and hosted behind the same `Choice`, `Score` and `Noul` types. |
 | **Confidence gate** | Per call, per question, or per question type. Score answers are never gated, and [Gating](docs/gating.md) says why. |
 | **Local only on request** | `DECIDE_LOCAL_ONLY=1` refuses every backend that would send the state to a server, whatever keys are set. [Gating](docs/gating.md). |
+| **Threshold from data** | Record decisions, attach outcomes, `decide fit` prints what each threshold would have accepted and how often it was right. |
 | **Readable routes** | `r.meta.route` is `['crossencoder:low_confidence:team=0.44<0.60', 'laya:ok']`, not a boolean. |
 | **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. [Limits](docs/typesafe-sdk.md). |
 | **A server and a CLI** | `decide serve` speaks TypeSafe's wire format; `decide ask` answers from the shell. |
@@ -164,6 +165,7 @@ you to install a local backend or set a hosted one's API key.
 | [Gating and fallback](docs/gating.md) | How the chain escalates, choosing a threshold, and the entropy, margin, conformal and calibrated policies. |
 | [Server](docs/server.md) | `decide serve`, which speaks TypeSafe's wire format so a non-Python service can call a local chain. |
 | [CLI](docs/cli.md) | `decide ask` and the rest of the command line. |
+| [Recording and fitting](docs/recording.md) | Record decisions in production, attach what happened, and fit a threshold off the result instead of guessing one. |
 | [Already using typesafe-sdk?](docs/typesafe-sdk.md) | The compatibility client, and what it does not support. |
 
 ## Latency

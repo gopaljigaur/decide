@@ -14,6 +14,7 @@ from decide.errors import (
 )
 from decide.gate import Gate
 from decide.policies import CalibratedGate, ConformalGate, EntropyGate, MarginGate, Policy
+from decide.recording import JsonlRecorder, Recorder, record_outcome, rows_from
 from decide.types import (
     Choice,
     ChoiceAnswer,
@@ -28,7 +29,7 @@ from decide.types import (
     ScoreAnswer,
 )
 
-__version__ = "0.2.15"
+__version__ = "0.2.16"
 
 __all__ = [
     "AllBackendsFailed",
@@ -44,6 +45,7 @@ __all__ = [
     "ConfigError",
     "Content",
     "DecideError",
+    "JsonlRecorder",
     "LowConfidence",
     "CalibratedGate",
     "Calibration",
@@ -59,6 +61,9 @@ __all__ = [
     "NoulAnswer",
     "Question",
     "RateLimitError",
+    "Recorder",
+    "record_outcome",
+    "rows_from",
     "Request",
     "Response",
     "Score",

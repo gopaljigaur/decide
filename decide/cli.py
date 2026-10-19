@@ -149,6 +149,26 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
 
     subparsers.add_parser("backends", help="List available and configured backends")
 
+    fit = subparsers.add_parser(
+        "fit", help="Fit a threshold from recorded decisions and their outcomes"
+    )
+    fit.add_argument("path", help="JSONL file a Recorder wrote")
+    fit.add_argument("question", help="Which question to fit")
+    fit.add_argument(
+        "--outcomes",
+        default=None,
+        metavar="PATH",
+        help="A second file holding the outcomes, when they are not in the first",
+    )
+    fit.add_argument(
+        "--alpha",
+        type=float,
+        default=0.1,
+        metavar="FLOAT",
+        help="Miss rate for the conformal cut; 0.1 asks for 90%% coverage",
+    )
+    fit.add_argument("--json", action="store_true", help="Print JSON instead of a table")
+
     serve = subparsers.add_parser("serve", help="Run the decide HTTP server")
     serve.add_argument(
         "--backends", default=None, metavar="a,b", help="Comma-separated backend names"
@@ -343,6 +363,60 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fit(args) -> int:  # noqa: ANN001
+    """Turn recorded decisions into a threshold, and say what each one would have done."""
+    from decide.calibration import fit_conformal_quantile, fit_temperature
+    from decide.recording import accuracy_by_threshold, recorded_confidences, rows_from
+
+    rows = rows_from(args.path, args.question, outcomes_path=args.outcomes)
+    if not rows:
+        print(
+            f"no labelled rows for {args.question!r}: record outcomes with "
+            "decide.recording.record_outcome before fitting",
+            file=sys.stderr,
+        )
+        return 1
+
+    table = accuracy_by_threshold(args.path, args.question, outcomes_path=args.outcomes)
+    report = {
+        "question": args.question,
+        "rows": len(rows),
+        "temperature": fit_temperature(rows),
+        "conformal_quantile": fit_conformal_quantile(rows, alpha=args.alpha),
+        "coverage_requested": round(1 - args.alpha, 4),
+        "thresholds": table,
+        "confidence_min": min(confidences)
+        if (
+            confidences := recorded_confidences(
+                args.path, args.question, outcomes_path=args.outcomes
+            )
+        )
+        else None,
+        "confidence_max": max(confidences) if confidences else None,
+    }
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+
+    confidences = recorded_confidences(args.path, args.question, outcomes_path=args.outcomes)
+    print(f"{report['rows']} labelled rows for {args.question!r}")
+    if confidences:
+        print(f"confidence         {min(confidences):.4f} to {max(confidences):.4f} as reported")
+    print(f"temperature        {report['temperature']}  (above 1 means overconfident here)")
+    print(
+        f"conformal cut      {report['conformal_quantile']}  "
+        f"for {report['coverage_requested']:.0%} coverage"
+    )
+    print()
+    print("threshold  accepted  share  accuracy when accepted")
+    for row in table:
+        print(
+            f"{row['threshold']:>9.2f}  {row['accepted']:>8.0f}  "
+            f"{row['accepted_share']:>5.2f}  {row['accuracy_when_accepted']:>22.4f}"
+        )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser, ask_parser = _build_parser()
     try:
@@ -356,6 +430,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _cmd_ask(args, ask_parser)
         if args.command == "backends":
             return _cmd_backends(args)
+        if args.command == "fit":
+            return _cmd_fit(args)
         if args.command == "serve":
             return _cmd_serve(args)
         parser.error(f"unknown command {args.command!r}")

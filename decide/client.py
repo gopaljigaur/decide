@@ -10,6 +10,12 @@ from decide.backends import load as load_backend
 from decide.backends.base import Backend
 from decide.errors import AllBackendsFailed, BackendError, ConfigError, LowConfidence
 from decide.gate import Gate
+from decide.recording import (
+    Recorder,
+    decision_row,
+    new_decision_id,
+    safe_record,
+)
 from decide.types import Content, Question, Request, Response
 
 _LAYA_MODEL_ENV = "DECIDE_LOCAL_MODEL"
@@ -153,18 +159,32 @@ class Client:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
+        recorder: Recorder | None = None,
     ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
         self.on_low_confidence = on_low_confidence
+        self.recorder = recorder
         if _local_only(os.environ):
             _refuse_hosted(self.backends)
 
     def decide(
-        self, state: Content, questions: Mapping[str, Question], *, model: str | None = None
+        self,
+        state: Content,
+        questions: Mapping[str, Question],
+        *,
+        model: str | None = None,
+        decision_id: str | None = None,
     ) -> Response:
+        """`decision_id` tags the recorded row, so an outcome can be attached to it later."""
         request = Request(state=state, questions=questions, model=model)
-        return self._run_chain(request)
+        response = self._run_chain(request)
+        if self.recorder is not None:
+            safe_record(
+                self.recorder,
+                decision_row(decision_id or new_decision_id(), request, response),
+            )
+        return response
 
     def _run_chain(self, request: Request) -> Response:
         route: list[str] = []
@@ -298,18 +318,32 @@ class AsyncClient:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
+        recorder: Recorder | None = None,
     ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
         self.on_low_confidence = on_low_confidence
+        self.recorder = recorder
         if _local_only(os.environ):
             _refuse_hosted(self.backends)
 
     async def decide(
-        self, state: Content, questions: Mapping[str, Question], *, model: str | None = None
+        self,
+        state: Content,
+        questions: Mapping[str, Question],
+        *,
+        model: str | None = None,
+        decision_id: str | None = None,
     ) -> Response:
+        """`decision_id` tags the recorded row, so an outcome can be attached to it later."""
         request = Request(state=state, questions=questions, model=model)
-        return await self._run_chain(request)
+        response = await self._run_chain(request)
+        if self.recorder is not None:
+            safe_record(
+                self.recorder,
+                decision_row(decision_id or new_decision_id(), request, response),
+            )
+        return response
 
     async def _run_chain(self, request: Request) -> Response:
         route: list[str] = []
