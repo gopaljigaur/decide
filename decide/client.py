@@ -153,12 +153,11 @@ class Client:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
-        local_only: bool | None = None,
     ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
         self.on_low_confidence = on_low_confidence
-        if _local_only(os.environ, local_only):
+        if _local_only(os.environ):
             _refuse_hosted(self.backends)
 
     def decide(
@@ -263,7 +262,6 @@ class Client:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
-        local_only: bool | None = None,
     ) -> Client:
         """Build a `Client` from an environment mapping.
 
@@ -272,16 +270,13 @@ class Client:
         configure from something else, e.g. in tests.
         """
         resolved_env = env if env is not None else os.environ
-        only_local = _local_only(resolved_env, local_only)
+        only_local = _local_only(resolved_env)
         backend_names, kwargs_by_name = _resolve_env_backends(resolved_env, only_local)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
         resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        return cls(
-            backends,
-            policy=resolved_policy,
-            on_low_confidence=on_low_confidence,
-            local_only=only_local,
-        )
+        if only_local:
+            _refuse_hosted(backends)
+        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
 
     def close(self) -> None:
         for backend in self.backends:
@@ -303,12 +298,11 @@ class AsyncClient:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
-        local_only: bool | None = None,
     ) -> None:
         self.backends = list(backends)
         self.policy = policy if policy is not None else Gate()
         self.on_low_confidence = on_low_confidence
-        if _local_only(os.environ, local_only):
+        if _local_only(os.environ):
             _refuse_hosted(self.backends)
 
     async def decide(
@@ -402,7 +396,6 @@ class AsyncClient:
         policy: Gate | None = None,
         *,
         on_low_confidence: Literal["accept", "raise"] = "accept",
-        local_only: bool | None = None,
     ) -> AsyncClient:
         """Build an `AsyncClient` from an environment mapping.
 
@@ -411,16 +404,13 @@ class AsyncClient:
         configure from something else, e.g. in tests.
         """
         resolved_env = env if env is not None else os.environ
-        only_local = _local_only(resolved_env, local_only)
+        only_local = _local_only(resolved_env)
         backend_names, kwargs_by_name = _resolve_env_backends(resolved_env, only_local)
         backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
         resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        return cls(
-            backends,
-            policy=resolved_policy,
-            on_low_confidence=on_low_confidence,
-            local_only=only_local,
-        )
+        if only_local:
+            _refuse_hosted(backends)
+        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
 
     async def aclose(self) -> None:
         for backend in self.backends:
@@ -515,10 +505,8 @@ _LOCAL_ONLY_ENV = "DECIDE_LOCAL_ONLY"
 _LOCAL_BACKENDS = frozenset({"laya", "laya_mlx", "crossencoder"})
 
 
-def _local_only(env: Mapping[str, str] | None, explicit: bool | None) -> bool:
-    """`local_only=` when given, else `DECIDE_LOCAL_ONLY` set to anything but 0."""
-    if explicit is not None:
-        return explicit
+def _local_only(env: Mapping[str, str] | None) -> bool:
+    """`DECIDE_LOCAL_ONLY` set to anything but 0."""
     value = (env or {}).get(_LOCAL_ONLY_ENV, "")
     return bool(value) and value != "0"
 

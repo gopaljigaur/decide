@@ -561,18 +561,6 @@ def test_local_only_needs_a_local_backend_to_exist(monkeypatch):
         Client.from_env(env={"DECIDE_LOCAL_ONLY": "1", "OPENAI_API_KEY": "sk-x"})
 
 
-def test_the_argument_beats_the_environment(monkeypatch):
-    import decide.client as mod
-
-    monkeypatch.setattr(mod, "load_backend", _capturing_loader({}))
-    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": True})
-    env = {"DECIDE_LOCAL_ONLY": "1", "TYPESAFE_API_KEY": "k"}
-    assert [b.name for b in Client.from_env(env=env, local_only=False).backends] == [
-        "laya_mlx",
-        "typesafe",
-    ]
-
-
 def test_a_local_only_chain_can_abstain_instead_of_accepting_a_low_answer():
     """`on_low_confidence="raise"` is how a chain fails instead of escalating."""
     weak = FakeBackend("laya", confidence=0.7)

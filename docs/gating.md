@@ -47,7 +47,7 @@ next backend.
 
 `Client.from_env()` adds a hosted backend whenever its key is in the
 environment, including a key exported for something else. Set
-`DECIDE_LOCAL_ONLY=1`, or pass `local_only=True`, and the library refuses to:
+`DECIDE_LOCAL_ONLY=1` and the library refuses to:
 
 ```bash
 DECIDE_LOCAL_ONLY=1 python -c "

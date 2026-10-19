@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.14 (2026-10-19)
+
+- `DECIDE_LOCAL_ONLY` is the only way to turn local only on. 0.2.13 also took a
+  `local_only=` keyword on `Client`, `AsyncClient` and both `from_env`s, which
+  was four signatures and a second source of truth for one deployment switch.
+
 ## 0.2.13 (2026-10-19)
 
 - `DECIDE_LOCAL_ONLY=1`, or `local_only=True`, refuses every backend that sends
