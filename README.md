@@ -36,6 +36,7 @@ the local one could not answer. Every response records the route it took.
 |---|---|
 | **One API, seven backends** | Local and hosted behind the same `Choice`, `Score` and `Noul` types. |
 | **Confidence gate** | Per call, per question, or per question type. Score answers are never gated, and [Gating](docs/gating.md) says why. |
+| **Local only on request** | `DECIDE_LOCAL_ONLY=1` refuses every backend that would send the state to a server, whatever keys are set. [Gating](docs/gating.md). |
 | **Readable routes** | `r.meta.route` is `['crossencoder:low_confidence:team=0.44<0.60', 'laya:ok']`, not a boolean. |
 | **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. [Limits](docs/typesafe-sdk.md). |
 | **A server and a CLI** | `decide serve` speaks TypeSafe's wire format; `decide ask` answers from the shell. |
@@ -146,7 +147,9 @@ default model unless `DECIDE_LOCAL_MODEL` overrides it; `typesafe` (if
 `openai_decisions` (if `OPENAI_API_KEY` is set and `DECIDE_OPENAI_DECISIONS` is not `0`);
 `llm` (if `DECIDE_LLM_BASE_URL` or `OPENAI_API_KEY` is set). A local backend,
 when installed, is tried first, with the hosted backends as fallback. Set
-`DECIDE_BACKENDS="laya,typesafe"` to override the order explicitly. If
+`DECIDE_BACKENDS="laya,typesafe"` to override the order explicitly, or
+`DECIDE_LOCAL_ONLY=1` to drop every hosted backend whatever keys are in the
+environment, which also makes `Client([...])` refuse one. If
 nothing is importable or configured, `from_env` raises `ConfigError` telling
 you to install a local backend or set a hosted one's API key.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.15 (2026-10-19)
+
+- The README names `DECIDE_LOCAL_ONLY`, in the feature table and in the
+  paragraph that describes how `from_env` picks the chain. 0.2.13 and 0.2.14
+  documented it only in `docs/`, so the page most people read still described
+  local first with hosted fallback and no way to turn that off.
+
 ## 0.2.14 (2026-10-19)
 
 - `DECIDE_LOCAL_ONLY` is the only way to turn local only on. 0.2.13 also took a
