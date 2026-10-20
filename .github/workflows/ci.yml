@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix: { python: ["3.10", "3.11", "3.12", "3.13", "3.14"] }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v3
       - run: uv python install ${{ matrix.python }}
       - run: uv sync --python ${{ matrix.python }}
