@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.17 (2026-10-20)
+
+- Fix the README on PyPI. Its links and the chain diagram were relative paths,
+  which PyPI resolves against `pypi.org`, so the diagram rendered as a broken
+  image and every link to `docs/`, the changelog and the licence was a 404.
+  They are absolute now. PyPI's sanitiser drops the `<source>` element, so the
+  page shows the light diagram; GitHub keeps `<picture>` and still switches on
+  dark mode.
+
 ## 0.2.16 (2026-10-19)
 
 - Record decisions in production and fit a threshold from them. `Client(...,

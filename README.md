@@ -9,12 +9,12 @@
 <a href="https://pypi.org/project/pydecide/"><img alt="PyPI" src="https://img.shields.io/pypi/v/pydecide?color=blue"></a>
 <a href="https://pypi.org/project/pydecide/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/pydecide"></a>
 <a href="https://pypi.org/project/pydecide/"><img alt="Downloads" src="https://img.shields.io/pypi/dm/pydecide?color=blue"></a>
-<a href="LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/pydecide?color=blue"></a>
+<a href="https://github.com/gopaljigaur/decide/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/pydecide?color=blue"></a>
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/chain-dark.svg">
-  <img alt="A state and three typed questions enter tier one, a 22M parameter cross-encoder. A confidence gate sends the questions it was not sure about to tier two, Laya. The response carries both the answers and the route." src="docs/chain-light.svg" width="920">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gopaljigaur/decide/main/docs/chain-dark.svg">
+  <img alt="A state and three typed questions enter tier one, a 22M parameter cross-encoder. A confidence gate sends the questions it was not sure about to tier two, Laya. The response carries both the answers and the route." src="https://raw.githubusercontent.com/gopaljigaur/decide/main/docs/chain-light.svg" width="920">
 </picture>
 
 </div>
@@ -35,11 +35,11 @@ the local one could not answer. Every response records the route it took.
 |  |  |
 |---|---|
 | **One API, seven backends** | Local and hosted behind the same `Choice`, `Score` and `Noul` types. |
-| **Confidence gate** | Per call, per question, or per question type. Score answers are never gated, and [Gating](docs/gating.md) says why. |
-| **Local only on request** | `DECIDE_LOCAL_ONLY=1` refuses every backend that would send the state to a server, whatever keys are set. [Gating](docs/gating.md). |
+| **Confidence gate** | Per call, per question, or per question type. Score answers are never gated, and [Gating](https://github.com/gopaljigaur/decide/blob/main/docs/gating.md) says why. |
+| **Local only on request** | `DECIDE_LOCAL_ONLY=1` refuses every backend that would send the state to a server, whatever keys are set. [Gating](https://github.com/gopaljigaur/decide/blob/main/docs/gating.md). |
 | **Threshold from data** | Record decisions, attach outcomes, `decide fit` prints what each threshold would have accepted and how often it was right. |
 | **Readable routes** | `r.meta.route` is `['crossencoder:low_confidence:team=0.44<0.60', 'laya:ok']`, not a boolean. |
-| **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. [Limits](docs/typesafe-sdk.md). |
+| **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. [Limits](https://github.com/gopaljigaur/decide/blob/main/docs/typesafe-sdk.md). |
 | **A server and a CLI** | `decide serve` speaks TypeSafe's wire format; `decide ask` answers from the shell. |
 | **20.9 ms** | Median for one Choice question on an M4 with laya-mlx, in process. Measured, method in [Latency](#latency). |
 
@@ -161,12 +161,12 @@ you to install a local backend or set a hosted one's API key.
 
 | | |
 |---|---|
-| [Backends](docs/backends.md) | The seven backends, the environment variables that pick them, and running the typesafe backend against any other `/v1/systemone` server. |
-| [Gating and fallback](docs/gating.md) | How the chain escalates, choosing a threshold, and the entropy, margin, conformal and calibrated policies. |
-| [Server](docs/server.md) | `decide serve`, which speaks TypeSafe's wire format so a non-Python service can call a local chain. |
-| [CLI](docs/cli.md) | `decide ask` and the rest of the command line. |
-| [Recording and fitting](docs/recording.md) | Record decisions in production, attach what happened, and fit a threshold off the result instead of guessing one. |
-| [Already using typesafe-sdk?](docs/typesafe-sdk.md) | The compatibility client, and what it does not support. |
+| [Backends](https://github.com/gopaljigaur/decide/blob/main/docs/backends.md) | The seven backends, the environment variables that pick them, and running the typesafe backend against any other `/v1/systemone` server. |
+| [Gating and fallback](https://github.com/gopaljigaur/decide/blob/main/docs/gating.md) | How the chain escalates, choosing a threshold, and the entropy, margin, conformal and calibrated policies. |
+| [Server](https://github.com/gopaljigaur/decide/blob/main/docs/server.md) | `decide serve`, which speaks TypeSafe's wire format so a non-Python service can call a local chain. |
+| [CLI](https://github.com/gopaljigaur/decide/blob/main/docs/cli.md) | `decide ask` and the rest of the command line. |
+| [Recording and fitting](https://github.com/gopaljigaur/decide/blob/main/docs/recording.md) | Record decisions in production, attach what happened, and fit a threshold off the result instead of guessing one. |
+| [Already using typesafe-sdk?](https://github.com/gopaljigaur/decide/blob/main/docs/typesafe-sdk.md) | The compatibility client, and what it does not support. |
 
 ## Latency
 
@@ -222,9 +222,9 @@ accordingly, as a signal to gate and fall back on, not as ground truth.
 ## Status
 
 The public API may still change before a 1.0 release. The current version is
-the one in the PyPI badge above, and the [changelog](CHANGELOG.md) says what
+the one in the PyPI badge above, and the [changelog](https://github.com/gopaljigaur/decide/blob/main/CHANGELOG.md) says what
 changed.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](https://github.com/gopaljigaur/decide/blob/main/LICENSE).
