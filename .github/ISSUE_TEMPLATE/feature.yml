@@ -1,0 +1,22 @@
+name: Feature
+description: Something it should do and does not
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do when you reached for this.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead
+      description: The workaround, if there is one. This decides whether the feature earns its place.
+  - type: textarea
+    id: shape
+    attributes:
+      label: What it might look like
+      description: Optional. A call, a flag, an environment variable.
+      render: python

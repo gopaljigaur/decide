@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Measurements of the decision models themselves
+    url: https://github.com/gopaljigaur/system-one-bench
+    about: Accuracy, calibration and latency for the backends, measured the same way for each.
