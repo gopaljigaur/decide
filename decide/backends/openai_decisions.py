@@ -19,6 +19,7 @@ from decide.types import (
     Request,
     Score,
     ScoreAnswer,
+    _as_mapping,
     render_content,
 )
 
@@ -38,7 +39,7 @@ def _question(name: str, question: Question) -> dict[str, Any]:
         extra = {
             "choices": [
                 {"value": k} if v is None else {"value": k, "description": render_content(v)}
-                for k, v in question.criteria.items()
+                for k, v in _as_mapping(question.criteria).items()
             ]
         }
     elif isinstance(question, Score):
@@ -49,7 +50,7 @@ def _question(name: str, question: Question) -> dict[str, Any]:
         extra = {}
         # The API has no slot for the true/false descriptions, so they join the instructions.
         lines = [
-            f"If {key}: {render_content(question.criteria[key])}"
+            f"If {key}: {render_content(_as_mapping(question.criteria)[key])}"
             for key in ("true", "false")
             if question.criteria and key in question.criteria
         ]
@@ -134,7 +135,11 @@ class OpenAIDecisionsBackend(HttpClientMixin, BaseBackend):
                 f"question {name!r}: 'probabilities' must cover each of the {len(levels)} "
                 "levels exactly once, by zero-based index"
             )
-        return ScoreAnswer(float(score), [by_index[i] for i in range(len(levels))], levels)
+        return ScoreAnswer(
+            float(score if score is not None else 0.0),
+            [by_index[i] for i in range(len(levels))],
+            levels,
+        )
 
     def _handle_response(
         self, response: httpx.Response, request: Request

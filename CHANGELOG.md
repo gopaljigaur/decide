@@ -1,132 +1,50 @@
 # Changelog
 
-## 0.2.17 (2026-10-20)
+## 0.2.18 (2026-10-20)
 
-- Fix the README on PyPI. Its links and the chain diagram were relative paths,
-  which PyPI resolves against `pypi.org`, so the diagram rendered as a broken
-  image and every link to `docs/`, the changelog and the licence was a 404.
-  They are absolute now. PyPI's sanitiser drops the `<source>` element, so the
-  page shows the light diagram; GitHub keeps `<picture>` and still switches on
-  dark mode.
+Packaging and types, after an audit of the whole repository.
 
-## 0.2.16 (2026-10-19)
+- `py.typed` ships, so a consumer's type checker reads the annotations that
+  were already there. `mypy` is clean and runs in CI, which it did not before;
+  it found 28 errors, nearly all from `criteria` being declared
+  `Mapping | Sequence[str]` while `__post_init__` normalizes it to a mapping.
+- The base install is `httpx` alone. FastAPI and uvicorn moved to the `server`
+  extra, where `decide serve` already told people to look. A client no longer
+  installs a web server it never runs.
+- Every README link is absolute, so the PyPI page renders: its diagram was a
+  broken image and every link to `docs/`, the changelog and the licence was a
+  404, because PyPI resolves relative paths against `pypi.org`.
+- Removed `Capabilities.max_choice_options`, which nothing set and nothing
+  read, and an unused helper in `decide.recording`.
 
-- Record decisions in production and fit a threshold from them. `Client(...,
-  recorder=JsonlRecorder(path))` writes one row per decision with the
-  probabilities, the reported confidence, the route and the latency;
-  `record_outcome(path, id, {...})` attaches what actually turned out to be
-  right; `rows_from` joins the two into exactly what `fit_temperature` and
-  `fit_conformal_quantile` take. `decide fit <file> <question>` prints the
-  fitted values plus what each threshold would have accepted and how often it
-  was right, which is the table that says whether a gate is safe to turn on.
-  Recording never fails a decision: a recorder that raises is ignored.
-- `decide fit` also prints the range of confidence actually reported, since a
-  threshold table of zeros usually means every threshold sits above what the
-  backend reports.
+## 0.2.6 to 0.2.17 (15 to 19 October 2026)
 
-## 0.2.15 (2026-10-19)
+Four changes, released in more steps than they deserved. What they amount to:
 
-- The README names `DECIDE_LOCAL_ONLY`, in the feature table and in the
-  paragraph that describes how `from_env` picks the chain. 0.2.13 and 0.2.14
-  documented it only in `docs/`, so the page most people read still described
-  local first with hosted fallback and no way to turn that off.
-
-## 0.2.14 (2026-10-19)
-
-- `DECIDE_LOCAL_ONLY` is the only way to turn local only on. 0.2.13 also took a
-  `local_only=` keyword on `Client`, `AsyncClient` and both `from_env`s, which
-  was four signatures and a second source of truth for one deployment switch.
-
-## 0.2.13 (2026-10-19)
-
-- `DECIDE_LOCAL_ONLY=1`, or `local_only=True`, refuses every backend that sends
-  the state to a server. `from_env` stops adding hosted backends whose keys
-  happen to be in the environment, naming one in `DECIDE_BACKENDS` raises
-  `ConfigError`, and so does passing one to `Client(...)`, since the check reads
-  each backend's `Capabilities.local`. One environment variable makes a
-  deployment local only, instead of every call site having to be written that
-  way.
-- `docs/gating.md` says what a single-backend chain does when its answer misses
-  the gate: there is no next backend, so the answer is accepted or raised,
-  never escalated.
-
-## 0.2.12 (2026-10-17)
-
-- `Client(..., on_low_confidence="raise")` abstains instead of returning an
-  answer that missed the gate, raising `LowConfidence` with the rejected
-  response and the route. A chain of local backends with this set never sends a
-  state anywhere, which is what a local-only deployment needs; the default is
-  unchanged.
-
-## 0.2.11 (2026-10-17)
-
-- `docs/backends.md` scores the checkpoint table on the confidence each
-  checkpoint reports, which is what 0.2.10 made the gate read. The ag_news
-  column moves: English 0.028 to 0.106, typed-decisions 0.126 to 0.365,
-  multilingual 0.072 to 0.047. The yes/no columns are unchanged. English is
-  still the default, on yes/no calibration; the multilingual checkpoint is the
-  best calibrated of the three on a four-way choice.
-
-## 0.2.10 (2026-10-17)
-
-- The gate now reads the backend's own `confidence` when it reports one,
-  instead of always computing the top probability itself. The two differ: on
-  one ag_news story von reports 0.877 against a top probability of 0.9077, and
-  laya reports 0.906 against 0.9779; on a two option choice laya has reported
-  0.5909 against 0.918. Every `Choice`, `Score` and `Noul` answer now carries
-  `confidence`, which is what the backend sent or `None`. Backends that report
-  nothing, such as the reranker, keep the computed fallback.
-
-## 0.2.9 (2026-10-17)
-
-- Correct what 0.2.6 said about the multilingual checkpoint. Its 0.527 on
-  yes/no questions was mostly the unnamed options: the same 150 rows with the
-  two options named score 0.853, against the English checkpoint's 0.887. The
-  English checkpoint stays the default, on calibration (0.049 against 0.103),
-  not on "barely above chance". `docs/backends.md` has both columns and the
-  third checkpoint.
-- Re-measured the README and `docs/` numbers on the current release of every
-  dependency, including laya-mlx 0.4.0, which answers identically to 0.1.0 and
-  is slower here: one Choice question goes from 15.6 ms to 20.9 ms.
-
-## 0.2.8 (2026-10-17)
-
-- `laya_mlx` now reads the installed laya-mlx version for the `noul_labels`
-  capability. laya-mlx renders a `labels` override since 0.3.0, and 0.2.7
-  refused labelled questions on every version of it. Checked against laya-mlx
-  0.4.0: the question that answers a constant 0.000 answers 0.979 with the
-  labels named, matching the PyTorch backend exactly.
-
-## 0.2.7 (2026-10-17)
-
-- `Noul` takes `labels`, which renames the two options the model scores, for
-  example `labels={"true": "positive", "false": "negative"}`. The default
-  `true`/`false` pair carries no task meaning: the published laya checkpoints
-  answer a constant 0.000 at confidence 1.0 to a question containing the word
-  "positive" until the labels are named, and naming them takes that question
-  from 0.000 to 0.979 on a positive review.
-- A backend that would answer while dropping those labels now refuses the
-  question, so the chain hands it to the next backend instead of returning a
-  confident wrong answer. `laya_mlx` and `crossencoder` cannot render them;
-  `laya` can since laya 0.3.8; the HTTP backends send them on; the `llm`
-  backend names them in its prompt. `Capabilities` carries the new
-  `noul_labels` flag, and `docs/backends.md` has the table.
-
-## 0.2.6 (2026-10-17)
-
-- `laya_mlx` now defaults to `aac6fef/laya-mlx`, the English checkpoint, instead
-  of the multilingual one. Measured on 150 rows each of ag_news and sst2, the
-  multilingual checkpoint answers 0.527 of yes/no questions correctly against
-  the English one's 0.833, and its expected calibration error on them is 0.373
-  against 0.053. A gate reads that confidence, so the best calibrated checkpoint
-  is the right default. Pass `model="aac6fef/laya-multilingual-mlx"` for input
-  that is not English. The numbers are in `docs/backends.md`.
-- Naming `laya` or `laya_mlx` in `DECIDE_BACKENDS` no longer requires
-  `DECIDE_LOCAL_MODEL`. It behaves like auto-detection and uses the backend's
-  own default checkpoint; set the variable to override it.
-- README, `docs/server.md` and `docs/typesafe-sdk.md` carry re-measured output
-  from the new default: one Choice question now takes 15.6 ms on an M4 instead
-  of 8.6 ms, since the English checkpoint is 421M against 322M.
+- **The gate reads the confidence the backend reports** (0.2.10). Every answer
+  now carries `confidence`, which is what the backend sent or `None`, and the
+  gate prefers it over the top probability. The two differ: von reports 0.877
+  where its top probability is 0.9077, and laya has reported 0.5909 against
+  0.918. Backends that report nothing keep the computed fallback.
+- **A `Noul` can name its two options** (0.2.8, 0.2.9). `labels={"true":
+  "positive", "false": "negative"}` renames what the model scores. The default
+  pair carries no task meaning, and the published laya checkpoints answer a
+  constant 0.000 at confidence 1.0 to a question containing the word
+  "positive" until the options are named. A backend that cannot carry the
+  names refuses the question instead of dropping them.
+- **Local only is a deployment switch** (0.2.12 to 0.2.15). `DECIDE_LOCAL_ONLY=1`
+  refuses every backend that would send the state to a server, whatever keys
+  are in the environment, checked on what `from_env` builds and on what any
+  `Client` accepts. `on_low_confidence="raise"` abstains with `LowConfidence`
+  instead of accepting an answer that missed the gate.
+- **Decisions can be recorded and a threshold fitted from them** (0.2.16).
+  `Client(recorder=JsonlRecorder(path))` writes a row per decision,
+  `record_outcome` attaches what turned out to be right, and `decide fit`
+  prints what each threshold would have accepted and how often it was right.
+  The calibration module could always fit a threshold; nothing produced the
+  rows to fit it on.
+- The `laya_mlx` default checkpoint also changed to the English one
+  (0.2.6, 0.2.7), chosen on calibration, not accuracy.
 
 ## 0.2.5 (2026-10-15)
 

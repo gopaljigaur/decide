@@ -14,7 +14,6 @@ from decide.types import Answer, Meta, Noul, Request, Response
 class Capabilities:
     batch: bool = False
     local: bool = False
-    max_choice_options: int | None = None
     # False means the backend would answer a labelled Noul while dropping the labels,
     # so it refuses the question instead and the chain can try the next backend.
     noul_labels: bool = False

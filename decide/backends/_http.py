@@ -9,7 +9,7 @@ duplicating the client lifecycle and status-code mapping.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -37,7 +37,9 @@ class HttpClientMixin:
         """Lazily create and reuse one `httpx.Client` for this backend instance."""
         if self._client is None:
             self._client = httpx.Client(
-                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+                base_url=self.base_url,
+                timeout=self.timeout,
+                transport=cast("httpx.BaseTransport | None", self._transport),
             )
         return self._client
 
@@ -45,7 +47,9 @@ class HttpClientMixin:
         """Lazily create and reuse one `httpx.AsyncClient` for this backend instance."""
         if self._aclient is None:
             self._aclient = httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+                base_url=self.base_url,
+                timeout=self.timeout,
+                transport=cast("httpx.AsyncBaseTransport | None", self._transport),
             )
         return self._aclient
 

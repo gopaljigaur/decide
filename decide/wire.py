@@ -17,6 +17,7 @@ from decide.types import (
     Response,
     Score,
     ScoreAnswer,
+    _as_mapping,
     render_content,
 )
 
@@ -26,7 +27,7 @@ def _wire_question(question: Choice | Score | Noul) -> dict[str, Any]:
         return {
             "type": "choice",
             "instructions": question.instructions,
-            "criteria": dict(question.criteria),
+            "criteria": dict(_as_mapping(question.criteria)),
         }
     if isinstance(question, Score):
         return {
@@ -37,9 +38,9 @@ def _wire_question(question: Choice | Score | Noul) -> dict[str, Any]:
     if isinstance(question, Noul):
         w: dict[str, Any] = {"type": "noul", "instructions": question.instructions}
         if question.criteria is not None:
-            w["criteria"] = dict(question.criteria)
+            w["criteria"] = dict(_as_mapping(question.criteria))
         if question.labels is not None:
-            w["labels"] = dict(question.labels)
+            w["labels"] = dict(_as_mapping(question.labels))
         return w
     raise TypeError(f"unknown question type: {type(question)!r}")
 
@@ -258,7 +259,7 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                 )
             choice = a.get("choice")
             if choice is None:
-                choice = max(probs, key=probs.get)
+                choice = max(probs, key=lambda name: probs[name])
             elif choice not in question.criteria:
                 raise BadResponseError(
                     backend="wire",
@@ -277,16 +278,16 @@ def from_wire_answers(answers: dict[str, Any], req: Request) -> dict[str, Answer
                 raise BadResponseError(
                     backend="wire", message=f"question '{name}' probabilities must not be empty"
                 )
-            probs = _indexed_numeric_mapping(
+            level_probs = _indexed_numeric_mapping(
                 raw_probs, name, "probabilities", len(question.criteria)
             )
-            score = a.get("score")
-            if score is None:
-                score = sum(i * p for i, p in enumerate(probs))
+            raw_score = a.get("score")
+            if raw_score is None:
+                score = sum(i * p for i, p in enumerate(level_probs))
             else:
-                score = _numeric(score, name, "score")
+                score = _numeric(raw_score, name, "score")
             levels = [render_content(level) for level in question.criteria]
-            result[name] = ScoreAnswer(score, probs, levels, _reported_confidence(a, name))
+            result[name] = ScoreAnswer(score, level_probs, levels, _reported_confidence(a, name))
 
         elif isinstance(question, Noul):
             if atype != "noul":

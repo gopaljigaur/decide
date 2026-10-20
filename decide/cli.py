@@ -8,6 +8,7 @@ import os
 import re
 import sys
 from collections.abc import Mapping, Sequence
+from typing import Any
 
 from decide.backends import _EXTRAS, REGISTRY, available
 from decide.client import Client
@@ -49,7 +50,7 @@ def make_client(env: Mapping[str, str] | None, policy: Gate | None) -> Client:
     return Client.from_env(env=env, policy=policy)
 
 
-def run_server(app: object, host: str, port: int) -> None:
+def run_server(app: Any, host: str, port: int) -> None:
     """Run `app` with uvicorn. A seam so tests can monkeypatch it without importing uvicorn."""
     try:
         import uvicorn

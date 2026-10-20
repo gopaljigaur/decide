@@ -160,6 +160,7 @@ class LayaBackend(BaseBackend):
     """
 
     name = "laya"
+    model: str
 
     def __init__(
         self,

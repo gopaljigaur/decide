@@ -50,8 +50,9 @@ uv tool install pydecide   # the decide CLI on your PATH, from any directory
 uv add pydecide            # inside a project
 ```
 
-With pip: `pip install pydecide` / `pipx install pydecide`. Either way, this
-includes the CLI, the hosted backends and the server.
+With pip: `pip install pydecide` / `pipx install pydecide`. That is the CLI,
+the hosted backends and one dependency, httpx. `decide serve` additionally
+needs the `server` extra.
 
 Local model backends need an extra:
 
@@ -64,7 +65,7 @@ otherwise tries to glob them. This pulls in PyTorch and MLX, about 2 GB.
 
 | Extra | Adds |
 |---|---|
-| `server` | Nothing further; kept as an empty extra so `pip install "pydecide[server]"` still works. FastAPI and uvicorn ship in the base install. |
+| `server` | FastAPI and uvicorn, for `decide serve`. The client alone needs neither. |
 | `laya` | `laya` backend (PyTorch) |
 | `mlx` | `laya_mlx` backend (Apple Silicon; needs Python 3.11+) |
 | `st` | `crossencoder` backend (sentence-transformers) |

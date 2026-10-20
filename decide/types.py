@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
 Content = str | Mapping[str, Any] | Sequence[Any]
 
@@ -18,6 +18,14 @@ def render_content(c: Content) -> str:
 
 def _frozen_mapping(m: Mapping) -> Mapping:
     return MappingProxyType(dict(m))
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    """A normalized `criteria`/`labels` as what it is after `__post_init__`: a mapping.
+
+    The field types stay wide because the constructors accept a sequence of names.
+    """
+    return cast("Mapping[str, Any]", value)
 
 
 @dataclass(frozen=True)
@@ -41,7 +49,7 @@ class Choice:
             object.__setattr__(self, "criteria", dict.fromkeys(self.criteria))
         if any(not isinstance(k, str) or not k for k in self.criteria):
             raise ValueError("Choice.criteria keys must be non-empty strings")
-        object.__setattr__(self, "criteria", _frozen_mapping(self.criteria))
+        object.__setattr__(self, "criteria", _frozen_mapping(_as_mapping(self.criteria)))
 
 
 @dataclass(frozen=True)
@@ -89,7 +97,7 @@ class Noul:
                 object.__setattr__(self, "criteria", dict(zip(keys, self.criteria, strict=False)))
             if set(self.criteria) - {"true", "false"} or not self.criteria:
                 raise ValueError("Noul.criteria keys must be 'true' and/or 'false'")
-            object.__setattr__(self, "criteria", _frozen_mapping(self.criteria))
+            object.__setattr__(self, "criteria", _frozen_mapping(_as_mapping(self.criteria)))
         if self.labels is not None:
             labels = self.labels
             if not isinstance(labels, Mapping):

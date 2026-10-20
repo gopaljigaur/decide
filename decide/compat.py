@@ -13,7 +13,7 @@ import random
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -59,7 +59,7 @@ def _sdk() -> Any:
 _response_class: type | None = None
 
 
-def _decide_response_class() -> type:
+def _decide_response_class() -> Any:
     """Build `DecideResponse` on first use, since its base lives in the optional SDK."""
     global _response_class
     if _response_class is None:
@@ -169,7 +169,7 @@ def _vendor_error(exc: BackendError, hosted: TypeSafeBackend) -> Exception:
         cls = sdk.TypeSafeInternalServerError
     else:
         cls = sdk.TypeSafeAPIError
-    return cls(status, exc.body, headers, endpoint=endpoint)
+    return cast("Any", cls)(status, exc.body, headers, endpoint=endpoint)
 
 
 _failure_classes: dict[type, type] = {}
@@ -190,7 +190,8 @@ def _failure_class(vendor_cls: type) -> type:
             self.failed = failed.failed
 
         def __str__(self: Any) -> str:
-            return f"all backends failed: {self.route}; hosted: {vendor_cls.__str__(self)}"
+            hosted = cast("Any", vendor_cls).__str__(self)
+            return f"all backends failed: {self.route}; hosted: {hosted}"
 
         cls = type(
             "AllBackendsFailed",

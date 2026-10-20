@@ -25,7 +25,7 @@ import httpx
 from decide.backends._http import HttpClientMixin, raise_for_status
 from decide.backends.base import BaseBackend, Capabilities
 from decide.errors import BadResponseError
-from decide.types import Answer, Choice, Noul, Request, Score, render_content
+from decide.types import Answer, Choice, Noul, Request, Score, _as_mapping, render_content
 from decide.wire import from_wire_answers
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def build_prompt(request: Request) -> str:
         if isinstance(question, Choice):
             lines.append(f"- {name} (choice): {render_content(question.instructions)}")
             lines.append("  Candidates:")
-            for candidate, description in question.criteria.items():
+            for candidate, description in _as_mapping(question.criteria).items():
                 if description is None:
                     lines.append(f"    - {candidate}")
                 else:
@@ -70,12 +70,13 @@ def build_prompt(request: Request) -> str:
         elif isinstance(question, Noul):
             lines.append(f"- {name} (noul): {render_content(question.instructions)}")
             if question.labels:
+                labels = _as_mapping(question.labels)
                 lines.append(
-                    f"    the two options are named {question.labels['true']!r} for yes "
-                    f"and {question.labels['false']!r} for no"
+                    f"    the two options are named {labels['true']!r} for yes "
+                    f"and {labels['false']!r} for no"
                 )
             if question.criteria:
-                for key, description in question.criteria.items():
+                for key, description in _as_mapping(question.criteria).items():
                     lines.append(f"    {key}: {render_content(description)}")
         else:
             raise TypeError(f"unknown question type: {type(question)!r}")
@@ -261,6 +262,7 @@ class LLMBackend(HttpClientMixin, BaseBackend):
     """
 
     name = "llm"
+    model: str
     PATH = "/chat/completions"
 
     def __init__(

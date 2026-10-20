@@ -43,6 +43,7 @@ from decide.types import (
     Response,
     Score,
     ScoreAnswer,
+    _as_mapping,
     render_content,
 )
 
@@ -303,7 +304,7 @@ class CrossEncoderBackend(BaseBackend):
         for name, question in request.questions.items():
             instructions = render_content(question.instructions)
             if isinstance(question, Choice):
-                for candidate, description in question.criteria.items():
+                for candidate, description in _as_mapping(question.criteria).items():
                     rendered = None if description is None else render_content(description)
                     pair = self.template.choice(state, instructions, candidate, rendered)
                     tasks.append(_Task(name, "choice", candidate, pair))
@@ -319,7 +320,7 @@ class CrossEncoderBackend(BaseBackend):
                     tasks.append(_Task(name, "noul", "", pair))
                 else:
                     for side in ("true", "false"):
-                        description = question.criteria.get(side)
+                        description = _as_mapping(question.criteria).get(side)
                         rendered = None if description is None else render_content(description)
                         pair = self.template.noul(state, instructions, side, rendered)
                         tasks.append(_Task(name, "noul", side, pair))
