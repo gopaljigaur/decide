@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, Literal
 
 from decide.backends import available
 from decide.backends import load as load_backend
 from decide.backends.base import Backend
+from decide.config import DEFAULT_CONFIG, Config
 from decide.errors import AllBackendsFailed, BackendError, ConfigError, LowConfidence
 from decide.gate import Gate
 from decide.recording import (
@@ -19,15 +21,6 @@ from decide.recording import (
 from decide.types import Content, Question, Request, Response
 
 _LAYA_MODEL_ENV = "DECIDE_LOCAL_MODEL"
-
-# Backends that `_kwargs_for` cannot build from environment variables, with the
-# reason to show instead of the generic "unknown backend" message.
-_ENV_UNSUPPORTED_BACKENDS: dict[str, str] = {
-    "crossencoder": (
-        "cannot be configured from the environment; construct it directly "
-        "and pass it to Client([...])"
-    ),
-}
 
 
 def _decision(
@@ -155,15 +148,29 @@ def _finish_batch(
 class Client:
     def __init__(
         self,
-        backends: Sequence[Backend],
+        backends: Sequence[Backend] | None = None,
         policy: Gate | None = None,
         *,
-        on_low_confidence: Literal["accept", "raise"] = "accept",
+        on_low_confidence: Literal["accept", "raise"] | None = None,
+        config: Config | str | Path | None = None,
         recorder: Recorder | None = None,
     ) -> None:
-        self.backends = list(backends)
-        self.policy = policy if policy is not None else Gate()
-        self.on_low_confidence = on_low_confidence
+        """Build from backend instances, a Config, or a JSON path.
+
+        With neither source, read decide.json in the current directory or discover
+        an installed local backend. Explicit policy and abstention arguments override
+        config defaults. Construction never prompts.
+        """
+        if backends is not None and config is not None:
+            raise ConfigError("pass backends or config, not both")
+        resolved = _read_config(config) if backends is None else Config()
+        self.backends = (
+            list(backends) if backends is not None else _configured_backends(resolved, os.environ)
+        )
+        self.policy = policy if policy is not None else Gate(resolved.min_confidence)
+        self.on_low_confidence = (
+            on_low_confidence if on_low_confidence is not None else resolved.on_low_confidence
+        )
         self.recorder = recorder
         if _local_only(os.environ):
             _refuse_hosted(self.backends)
@@ -281,22 +288,27 @@ class Client:
         env: Mapping[str, str] | None = None,
         policy: Gate | None = None,
         *,
-        on_low_confidence: Literal["accept", "raise"] = "accept",
+        on_low_confidence: Literal["accept", "raise"] | None = None,
+        config: Config | str | Path | None = None,
     ) -> Client:
         """Build a `Client` from an environment mapping.
 
-        `env` defaults to `os.environ` (the real process environment) when
-        omitted or `None`; pass an explicit mapping (including `{}`) to
-        configure from something else, e.g. in tests.
+        Omitted `env` reads `os.environ` and the current directory's decide.json.
+        An explicit mapping (including `{}`) skips file discovery unless `config`
+        is supplied. DECIDE_BACKENDS overrides the saved chain; API keys only
+        authenticate explicitly selected backends.
         """
         resolved_env = env if env is not None else os.environ
-        only_local = _local_only(resolved_env)
-        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env, only_local)
-        backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
-        resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        if only_local:
-            _refuse_hosted(backends)
-        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
+        resolved = _read_config(config) if config is not None or env is None else Config()
+        backends = _configured_backends(resolved, resolved_env, env_selection=True)
+        resolved_policy = policy if policy is not None else _policy_from_env(resolved_env, resolved)
+        return cls(
+            backends,
+            policy=resolved_policy,
+            on_low_confidence=(
+                on_low_confidence if on_low_confidence is not None else resolved.on_low_confidence
+            ),
+        )
 
     def close(self) -> None:
         for backend in self.backends:
@@ -314,15 +326,29 @@ class Client:
 class AsyncClient:
     def __init__(
         self,
-        backends: Sequence[Backend],
+        backends: Sequence[Backend] | None = None,
         policy: Gate | None = None,
         *,
-        on_low_confidence: Literal["accept", "raise"] = "accept",
+        on_low_confidence: Literal["accept", "raise"] | None = None,
+        config: Config | str | Path | None = None,
         recorder: Recorder | None = None,
     ) -> None:
-        self.backends = list(backends)
-        self.policy = policy if policy is not None else Gate()
-        self.on_low_confidence = on_low_confidence
+        """Build from backend instances, a Config, or a JSON path.
+
+        With neither source, read decide.json in the current directory or discover
+        an installed local backend. Explicit policy and abstention arguments override
+        config defaults. Construction never prompts.
+        """
+        if backends is not None and config is not None:
+            raise ConfigError("pass backends or config, not both")
+        resolved = _read_config(config) if backends is None else Config()
+        self.backends = (
+            list(backends) if backends is not None else _configured_backends(resolved, os.environ)
+        )
+        self.policy = policy if policy is not None else Gate(resolved.min_confidence)
+        self.on_low_confidence = (
+            on_low_confidence if on_low_confidence is not None else resolved.on_low_confidence
+        )
         self.recorder = recorder
         if _local_only(os.environ):
             _refuse_hosted(self.backends)
@@ -429,22 +455,27 @@ class AsyncClient:
         env: Mapping[str, str] | None = None,
         policy: Gate | None = None,
         *,
-        on_low_confidence: Literal["accept", "raise"] = "accept",
+        on_low_confidence: Literal["accept", "raise"] | None = None,
+        config: Config | str | Path | None = None,
     ) -> AsyncClient:
         """Build an `AsyncClient` from an environment mapping.
 
-        `env` defaults to `os.environ` (the real process environment) when
-        omitted or `None`; pass an explicit mapping (including `{}`) to
-        configure from something else, e.g. in tests.
+        Omitted `env` reads `os.environ` and the current directory's decide.json.
+        An explicit mapping (including `{}`) skips file discovery unless `config`
+        is supplied. DECIDE_BACKENDS overrides the saved chain; API keys only
+        authenticate explicitly selected backends.
         """
         resolved_env = env if env is not None else os.environ
-        only_local = _local_only(resolved_env)
-        backend_names, kwargs_by_name = _resolve_env_backends(resolved_env, only_local)
-        backends = [load_backend(name, **kwargs_by_name[name]) for name in backend_names]
-        resolved_policy = policy if policy is not None else _policy_from_env(resolved_env)
-        if only_local:
-            _refuse_hosted(backends)
-        return cls(backends, policy=resolved_policy, on_low_confidence=on_low_confidence)
+        resolved = _read_config(config) if config is not None or env is None else Config()
+        backends = _configured_backends(resolved, resolved_env, env_selection=True)
+        resolved_policy = policy if policy is not None else _policy_from_env(resolved_env, resolved)
+        return cls(
+            backends,
+            policy=resolved_policy,
+            on_low_confidence=(
+                on_low_confidence if on_low_confidence is not None else resolved.on_low_confidence
+            ),
+        )
 
     async def aclose(self) -> None:
         for backend in self.backends:
@@ -462,7 +493,7 @@ class AsyncClient:
         await self.aclose()
 
 
-def _policy_from_env(env: Mapping[str, str] | None) -> Gate:
+def _policy_from_env(env: Mapping[str, str] | None, config: Config | None = None) -> Gate:
     env = env or {}
     min_confidence = env.get("DECIDE_MIN_CONFIDENCE")
     if min_confidence is not None:
@@ -473,43 +504,51 @@ def _policy_from_env(env: Mapping[str, str] | None) -> Gate:
                 f"invalid DECIDE_MIN_CONFIDENCE {min_confidence!r}: must be a float"
             ) from exc
         return Gate(min_confidence=value)
-    return Gate()
+    return Gate(config.min_confidence if config is not None else 0.0)
 
 
-def _kwargs_for(name: str, env: Mapping[str, str]) -> dict[str, Any]:
+def _kwargs_for(
+    name: str, env: Mapping[str, str], options: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    credentials = {
+        "typesafe": "TYPESAFE_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "openai_decisions": "OPENAI_API_KEY",
+    }
     if name == "typesafe":
-        if "TYPESAFE_API_KEY" not in env:
-            raise ConfigError("missing TYPESAFE_API_KEY for backend 'typesafe'")
-        kwargs: dict[str, Any] = {"api_key": env["TYPESAFE_API_KEY"]}
-        base_url = env.get("TYPESAFE_BASE_URL")
-        if base_url is not None:
-            kwargs["base_url"] = base_url
-        return kwargs
-    if name == "openrouter":
-        if "OPENROUTER_API_KEY" not in env:
-            raise ConfigError("missing OPENROUTER_API_KEY for backend 'openrouter'")
-        return {"api_key": env["OPENROUTER_API_KEY"]}
-    if name == "openai_decisions":
-        if "OPENAI_API_KEY" not in env:
-            raise ConfigError("missing OPENAI_API_KEY for backend 'openai_decisions'")
+        kwargs: dict[str, Any] = {
+            "api_key": env.get("TYPESAFE_API_KEY"),
+            "base_url": env.get("TYPESAFE_BASE_URL"),
+        }
+    elif name == "openrouter":
+        kwargs = {"api_key": env.get("OPENROUTER_API_KEY")}
+    elif name == "openai_decisions":
         kwargs = {
-            "api_key": env["OPENAI_API_KEY"],
+            "api_key": env.get("OPENAI_API_KEY"),
             "model": env.get("DECIDE_OPENAI_DECISIONS_MODEL"),
         }
-        return {k: v for k, v in kwargs.items() if v is not None}
-    if name == "llm":
+    elif name == "llm":
         kwargs = {
             "base_url": env.get("DECIDE_LLM_BASE_URL"),
             "api_key": env.get("OPENAI_API_KEY"),
             "model": env.get("DECIDE_LLM_MODEL", "gpt-4o-mini"),
         }
-        return {k: v for k, v in kwargs.items() if v is not None}
-    if name in ("laya", "laya_mlx"):
-        # Same as auto-detection: without the override the backend's own default applies.
-        return _auto_local_kwargs(env)
-    if name in _ENV_UNSUPPORTED_BACKENDS:
-        raise ConfigError(f"backend {name!r} {_ENV_UNSUPPORTED_BACKENDS[name]}")
-    raise ConfigError(f"unknown backend {name!r}")
+    elif name in ("laya", "laya_mlx"):
+        kwargs = _auto_local_kwargs(env)
+    elif name == "crossencoder":
+        kwargs = {}
+    else:
+        raise ConfigError(f"unknown backend {name!r}")
+    kwargs = {key: value for key, value in kwargs.items() if value is not None}
+    kwargs.update(options or {})
+    if name in credentials and "api_key" not in kwargs:
+        raise ConfigError(f"missing {credentials[name]} for backend {name!r}")
+    if name == "crossencoder" and not kwargs.get("model"):
+        raise ConfigError(
+            "crossencoder requires a model in Config.options; it cannot be configured "
+            "from the environment alone"
+        )
+    return kwargs
 
 
 def _auto_local_kwargs(env: Mapping[str, str]) -> dict[str, Any]:
@@ -548,6 +587,7 @@ def _local_only(env: Mapping[str, str] | None) -> bool:
 def _resolve_env_backends(
     env: Mapping[str, str] | None,
     local_only: bool = False,
+    options: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[list[str], dict[str, dict[str, Any]]]:
     env = env or {}
 
@@ -560,6 +600,8 @@ def _resolve_env_backends(
             if n and n not in seen:
                 seen.add(n)
                 names.append(n)
+        if not names:
+            raise ConfigError("DECIDE_BACKENDS must contain at least one backend name")
         if local_only:
             hosted = [n for n in names if n not in _LOCAL_BACKENDS]
             if hosted:
@@ -567,7 +609,7 @@ def _resolve_env_backends(
                     f"DECIDE_BACKENDS names {hosted} while local only is on; "
                     f"local backends are {sorted(_LOCAL_BACKENDS)}"
                 )
-        kwargs_by_name = {name: _kwargs_for(name, env) for name in names}
+        kwargs_by_name = {name: _kwargs_for(name, env, (options or {}).get(name)) for name in names}
         return names, kwargs_by_name
 
     availability = available()
@@ -590,29 +632,38 @@ def _resolve_env_backends(
             )
         return names, kwargs_by_name
 
-    if "TYPESAFE_API_KEY" in env:
-        names.append("typesafe")
-        kwargs_by_name["typesafe"] = _kwargs_for("typesafe", env)
-
-    if "OPENROUTER_API_KEY" in env:
-        names.append("openrouter")
-        kwargs_by_name["openrouter"] = _kwargs_for("openrouter", env)
-
-    if "OPENAI_API_KEY" in env and env.get("DECIDE_OPENAI_DECISIONS") != "0":
-        names.append("openai_decisions")
-        kwargs_by_name["openai_decisions"] = _kwargs_for("openai_decisions", env)
-
-    if "DECIDE_LLM_BASE_URL" in env or "OPENAI_API_KEY" in env:
-        names.append("llm")
-        kwargs_by_name["llm"] = _kwargs_for("llm", env)
-
     if not names:
         raise ConfigError(
-            "no backend configured; checked DECIDE_LOCAL_MODEL, TYPESAFE_API_KEY, "
-            "OPENROUTER_API_KEY, DECIDE_LLM_BASE_URL, OPENAI_API_KEY\n"
+            "no local backend installed and no backend explicitly selected. Run decide init.\n"
             'Install a local model backend: uv tool install "pydecide[mlx]"  (Apple Silicon) '
             'or "pydecide[laya]"\n'
-            "or set TYPESAFE_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY for a hosted one."
+            "For hosted inference, run decide init or select DECIDE_BACKENDS explicitly; "
+            "credentials such as TYPESAFE_API_KEY never select a backend."
         )
 
     return names, kwargs_by_name
+
+
+def _read_config(config: Config | str | Path | None) -> Config:
+    if isinstance(config, Config):
+        return config
+    if config is not None:
+        return Config.load(config)
+    return Config.load() if DEFAULT_CONFIG.exists() else Config()
+
+
+def _configured_backends(
+    config: Config, env: Mapping[str, str], *, env_selection: bool = False
+) -> list[Backend]:
+    # Constructors honor the supplied config. from_env retains explicit env overrides.
+    effective_env = dict(env)
+    if not env_selection or not effective_env.get("DECIDE_BACKENDS", "").strip():
+        effective_env["DECIDE_BACKENDS"] = ",".join(config.backends)
+    names, kwargs = _resolve_env_backends(effective_env, _local_only(env), config.options)
+    try:
+        backends = [load_backend(name, **kwargs[name]) for name in names]
+    except TypeError as exc:
+        raise ConfigError(f"invalid backend options: {exc}") from exc
+    if _local_only(env):
+        _refuse_hosted(backends)
+    return backends

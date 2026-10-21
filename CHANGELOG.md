@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Add `decide init` for interactive setup, saving an explicit chain, backend
+  options, and confidence threshold to `decide.json`. Setup does not save keys.
+- Both clients accept `config=Config(...)` or a JSON path; CLI `ask` and `serve`
+  share the same config, with an optional `--config` path.
+- **Behavior change:** API keys and server URLs no longer automatically select
+  hosted backends. With no saved chain, only local models are discovered. Users
+  relying on automatic hosted fallback must run `decide init`, supply a config,
+  or explicitly set `DECIDE_BACKENDS`. Existing direct backend construction and
+  `DECIDE_LOCAL_ONLY` enforcement continue to work. `DECIDE_OPENAI_DECISIONS`
+  is obsolete because there is no automatic hosted selection to disable.
+
 ## 0.2.18 (2026-10-20)
 
 Packaging and types, after an audit of the whole repository.

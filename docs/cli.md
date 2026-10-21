@@ -1,5 +1,15 @@
 # CLI
 
+Run `decide init` for interactive setup. It writes `decide.json` in the current
+directory, which `ask` and `serve` read automatically. `decide init --config
+custom.json` writes another path; pass `--config custom.json` to `ask` or
+`serve` to use it. See [Configuration](configuration.md).
+
+Setup asks for the ordered backend chain, optional models and server URLs, and
+a confidence threshold. It shows which backends send states to servers and
+confirms before saving or replacing a file. API keys stay in the environment.
+The setup command requires a terminal; normal commands never prompt.
+
 `--choice`, `--score` and `--noul` question names are optional. An unnamed
 flag is auto-named after the flag itself (`choice`, `score`, `noul`); a
 second unnamed flag of the same type becomes `choice2`, `score2`, `noul2`,
@@ -57,6 +67,9 @@ laya_mlx          yes        default
 crossencoder      yes        n/a
 llm               yes        no
 ```
+
+`CONFIGURED` reports available credentials or local settings, not whether a
+backend is selected in the chain. Keys do not activate hosted inference.
 
 Every backend with `INSTALLED` `no` gets an `INSTALL` column naming the
 exact command to add it, e.g. `pip install "pydecide[laya]"`. For `laya`

@@ -7,7 +7,7 @@
 | `openai_decisions.py` | `openai_decisions` | none (httpx only) | OpenAI Decisions API (public beta), `POST https://api.openai.com/v1/decisions`, bearer auth, default model `gpt-6-luna`. A `Noul` is a `predicate` question; a `Noul`'s true/false descriptions are appended to its instructions, since the API has no field for them. A refusal raises `BadResponseError`. |
 | `laya.py` | `laya` | `pydecide[laya]` | Local PyTorch `laya.Agent`, default model `convaiinnovations/laya` when constructed directly. |
 | `laya_mlx.py` | `laya_mlx` | `pydecide[mlx]` (Python 3.11+) | Local MLX `laya_mlx.Agent` (Apple Silicon), default model `aac6fef/laya-mlx` when constructed directly. |
-| `crossencoder.py` | `crossencoder` | `pydecide[st]` | Local `sentence_transformers.CrossEncoder`. Not configurable from the environment; construct it directly and pass it to `Client([...])`. |
+| `crossencoder.py` | `crossencoder` | `pydecide[st]` | Local `sentence_transformers.CrossEncoder`. Set its model in `Config.options` or construct it directly. |
 | `llm.py` | `llm` | none (httpx only) | Any OpenAI-compatible chat-completions server, default base URL `https://api.openai.com/v1`, default model `gpt-4o-mini`. The least trustworthy backend (see below). |
 
 `crossencoder` is built by hand, for example:
@@ -40,21 +40,20 @@ r.choices["team"].probabilities  # {"billing": 0.947, "eng": 0.019, "shipping": 
 
 None of these are required to get started. See
 [Quickstart](../README.md#quickstart-zero-configuration) in the README. They
-either override a local backend that `from_env` already auto-selects once
-it's installed, or supply the API key a hosted backend needs to be
-auto-selected at all.
+supply legacy overrides or credentials for a backend you explicitly selected.
+Use `decide init` or [configuration](configuration.md) to choose the chain;
+API keys and URLs never add a hosted backend automatically.
 
 | Variable | Backend | Meaning |
 |---|---|---|
 | `DECIDE_LOCAL_ONLY` | all | `1` refuses every backend that sends the state to a server, whatever keys are set. See [Gating](gating.md). |
 | `DECIDE_LOCAL_MODEL` | `laya`, `laya_mlx` | Overrides the default Hugging Face repo id (or local path) of the model to load. Optional: omit it and the installed local backend auto-selects with its own default model. |
-| `TYPESAFE_API_KEY` | `typesafe` | API key, sent as `Authorization: Bearer`. Required to auto-select `typesafe`. |
+| `TYPESAFE_API_KEY` | `typesafe` | API key, sent as `Authorization: Bearer`. Required when `typesafe` is selected. |
 | `TYPESAFE_BASE_URL` | `typesafe` | Overrides the default `https://api.typesafe.ai`. |
-| `OPENROUTER_API_KEY` | `openrouter` | API key, sent as `Authorization: Bearer`. Required to auto-select `openrouter`. |
-| `OPENAI_API_KEY` | `openai_decisions`, `llm` | API key, sent as `Authorization: Bearer`. Setting it auto-selects `openai_decisions` and `llm`; the `llm` backend sends it only if the server needs one. |
-| `DECIDE_OPENAI_DECISIONS` | `openai_decisions` | Set to `0` to stop `OPENAI_API_KEY` from auto-selecting `openai_decisions`. |
+| `OPENROUTER_API_KEY` | `openrouter` | API key, sent as `Authorization: Bearer`. Required when `openrouter` is selected. |
+| `OPENAI_API_KEY` | `openai_decisions`, `llm` | API key, sent as `Authorization: Bearer`. Authenticates explicitly selected backends; does not select either one. |
 | `DECIDE_OPENAI_DECISIONS_MODEL` | `openai_decisions` | Model to request; defaults to `gpt-6-luna`. |
-| `DECIDE_LLM_BASE_URL` | `llm` | Base URL of an OpenAI-compatible chat-completions server. Setting it (or `OPENAI_API_KEY`) auto-selects `llm`. |
+| `DECIDE_LLM_BASE_URL` | `llm` | Base URL of an OpenAI-compatible chat-completions server. Used only when `llm` is explicitly selected. |
 | `DECIDE_LLM_MODEL` | `llm` | Model name to request; defaults to `gpt-4o-mini`. |
 | `DECIDE_BACKENDS` | `Client.from_env` | Comma-separated backend names, overriding auto-detection entirely. |
 | `DECIDE_MIN_CONFIDENCE` | `Client.from_env` (`Gate`) | Float threshold for the default `Gate` built by `from_env`, when no explicit `policy` is passed. |
@@ -126,8 +125,8 @@ TYPESAFE_API_KEY=unused TYPESAFE_BASE_URL=http://localhost:8000 \
   decide ask "I was charged twice" --choice billing,engineering
 ```
 
-`DECIDE_BACKENDS` matters here: with a local backend installed, `from_env`
-puts it first and the server never gets the question.
+`DECIDE_BACKENDS` explicitly selects the server; without a configured chain,
+`from_env` discovers only an installed local backend.
 
 The table lists what has actually been run, not everything that claims
 compatibility. The `model` column is what the server reported back in

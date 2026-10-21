@@ -8,10 +8,12 @@ import os
 import re
 import sys
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from decide.backends import _EXTRAS, REGISTRY, available
 from decide.client import Client
+from decide.config import DEFAULT_CONFIG, Config
 from decide.errors import ConfigError, DecideError
 from decide.gate import Gate
 from decide.types import (
@@ -40,14 +42,19 @@ _ENV_VARS: dict[str, tuple[str, ...]] = {
 }
 
 
-def make_client(env: Mapping[str, str] | None, policy: Gate | None) -> Client:
+def make_client(
+    env: Mapping[str, str] | None, policy: Gate | None, config: Path | None = None
+) -> Client:
     """Build a `Client` from an environment mapping and policy.
 
     A thin wrapper around `Client.from_env` so tests can monkeypatch client
     construction (e.g. `decide.cli.make_client`) without touching real
     backends or the real environment.
     """
-    return Client.from_env(env=env, policy=policy)
+    source = (
+        config if config is not None else (Config.load() if DEFAULT_CONFIG.exists() else Config())
+    )
+    return Client.from_env(env=env, policy=policy, config=source)
 
 
 def run_server(app: Any, host: str, port: int) -> None:
@@ -106,7 +113,11 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     parser = argparse.ArgumentParser(prog="decide", description="One CLI for every decision model.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    init = subparsers.add_parser("init", help="Interactively configure the backend chain")
+    init.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="File to write")
+
     ask = subparsers.add_parser("ask", help="Ask one or more questions about some state text")
+    ask.add_argument("--config", type=Path, help="JSON configuration file")
     ask.add_argument("text", metavar="TEXT", help="The state/content to decide about")
     ask.add_argument(
         "--choice",
@@ -171,6 +182,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     fit.add_argument("--json", action="store_true", help="Print JSON instead of a table")
 
     serve = subparsers.add_parser("serve", help="Run the decide HTTP server")
+    serve.add_argument("--config", type=Path, help="JSON configuration file")
     serve.add_argument(
         "--backends", default=None, metavar="a,b", help="Comma-separated backend names"
     )
@@ -183,7 +195,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
         help="Bearer token required to call the server. Falls back to the DECIDE_API_KEY "
         "environment variable when omitted; this flag takes precedence over it.",
     )
-    serve.add_argument("--min-confidence", type=float, default=0.0, metavar="FLOAT")
+    serve.add_argument("--min-confidence", type=float, default=None, metavar="FLOAT")
     serve.add_argument(
         "--verbose",
         action="store_true",
@@ -286,7 +298,11 @@ def _cmd_ask(args: argparse.Namespace, ask_parser: argparse.ArgumentParser) -> i
 
     policy = Gate(min_confidence=args.min_confidence) if args.min_confidence is not None else None
     # `Client.from_env` reads `os.environ` itself when `env` is omitted/None.
-    client = make_client(None, policy)
+    client = (
+        make_client(None, policy, args.config)
+        if args.config is not None
+        else make_client(None, policy)
+    )
     try:
         response = client.decide(args.text, questions, model=args.model)
     finally:
@@ -353,8 +369,12 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     env = dict(os.environ)
     if args.backends:
         env["DECIDE_BACKENDS"] = args.backends
-    policy = Gate(min_confidence=args.min_confidence)
-    client = make_client(env, policy)
+    policy = Gate(min_confidence=args.min_confidence) if args.min_confidence is not None else None
+    client = (
+        make_client(env, policy, args.config)
+        if args.config is not None
+        else make_client(env, policy)
+    )
 
     from decide.server import create_app
 
@@ -418,6 +438,79 @@ def _cmd_fit(args) -> int:  # noqa: ANN001
     return 0
 
 
+def _prompt(label: str, default: str = "") -> str:
+    suffix = f" [{default}]" if default else ""
+    return input(f"{label}{suffix}: ").strip() or default
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Save an explicit chain without loading models or collecting credentials."""
+    if not sys.stdin.isatty():
+        raise ConfigError("decide init needs an interactive terminal; write a config file instead")
+    try:
+        overwrite = args.config.exists()
+        if overwrite and _prompt(f"Replace {args.config}? (y/N)", "n").lower() != "y":
+            print("Setup cancelled; configuration unchanged.")
+            return 0
+        installed = available()
+        default = "laya_mlx" if installed.get("laya_mlx") else "laya"
+        local = {"laya", "laya_mlx", "crossencoder"}
+        print("Choose your backend chain, in order. The default runs inference locally.")
+        for name in REGISTRY:
+            location = "local" if name in local else "server; sends your state"
+            hint = "" if installed.get(name) else f"; install {_EXTRAS[name]}"
+            print(f"  {name}: {location}{hint}")
+        while True:
+            names = [n.strip() for n in _prompt("Backends (comma-separated)", default).split(",")]
+            try:
+                chosen = Config(backends=names)
+                if os.environ.get("DECIDE_LOCAL_ONLY", "0") not in ("", "0") and any(
+                    name not in local for name in chosen.backends
+                ):
+                    raise ConfigError("DECIDE_LOCAL_ONLY forbids server backends")
+                break
+            except ConfigError as exc:
+                print(exc)
+        options: dict[str, dict[str, Any]] = {}
+        for name in chosen.backends:
+            while True:
+                model = _prompt(f"{name} model (blank uses backend default)")
+                if name != "crossencoder" or model:
+                    break
+                print("crossencoder requires a model name or path.")
+            values: dict[str, Any] = {"model": model} if model else {}
+            if name in {"typesafe", "llm"}:
+                url = _prompt(f"{name} base URL (blank uses backend default)")
+                if url:
+                    values["base_url"] = url
+            if values:
+                options[name] = values
+        while True:
+            raw = _prompt("Minimum confidence before trying the next backend (0 to 1)", "0")
+            try:
+                config = Config(chosen.backends, options, float(raw))
+                break
+            except (ConfigError, ValueError):
+                print("Enter a number between 0 and 1.")
+        print("Chain: " + " -> ".join(config.backends))
+        hosted = [name for name in config.backends if name not in local]
+        if hosted:
+            print("States may be sent to servers by: " + ", ".join(hosted))
+            print("Set the selected backend's API key in your environment; keys are not saved.")
+        if _prompt(f"Save to {args.config}? (Y/n)", "y").lower() != "y":
+            print("Setup cancelled; configuration unchanged.")
+            return 0
+        config.save(args.config, overwrite=overwrite)
+        print(
+            f"Saved {args.config}. Use decide ask, decide serve, "
+            f"or Client(config={str(args.config)!r})."
+        )
+        return 0
+    except (EOFError, KeyboardInterrupt):
+        print("\nSetup cancelled; configuration unchanged.")
+        return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser, ask_parser = _build_parser()
     try:
@@ -427,6 +520,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             # loading a local backend; silence them by default so the CLI's output is only
             # our table/JSON, unless the user opted into --verbose.
             os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        if args.command == "init":
+            return _cmd_init(args)
         if args.command == "ask":
             return _cmd_ask(args, ask_parser)
         if args.command == "backends":

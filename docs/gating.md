@@ -45,29 +45,14 @@ next backend.
 
 ### Enforcing it for a whole deployment
 
-`Client.from_env()` adds a hosted backend whenever its key is in the
-environment, including a key exported for something else. Set
-`DECIDE_LOCAL_ONLY=1` and the library refuses to:
+The default chain discovers only installed local backends. Hosted inference
+requires an explicit choice in `decide init`, a config file, Python code, or
+`DECIDE_BACKENDS`. API keys alone do not add backends.
 
-```bash
-DECIDE_LOCAL_ONLY=1 python -c "
-from decide import Client
-print([b.name for b in Client.from_env().backends])"
-# ['laya_mlx']            with TYPESAFE_API_KEY, OPENROUTER_API_KEY and OPENAI_API_KEY all set
-```
-
-Without the flag that same environment builds
-`['laya_mlx', 'typesafe', 'openrouter', 'openai_decisions', 'llm']`. With it:
-
-- the hosted backends are not added, whatever keys are present
-- naming one in `DECIDE_BACKENDS` raises `ConfigError` instead of being honoured
-- passing one to `Client(...)` raises `ConfigError`, since the check is on the
-  backends themselves, not on how they were chosen
-- a backend that does not report `Capabilities(local=True)` counts as hosted, so
-  a backend of your own has to say so
-
-It is one environment variable, so it belongs in the deployment rather than in
-every call site.
+`DECIDE_LOCAL_ONLY=1` additionally enforces local inference across configuration
+sources. Selecting a server backend in the config or `DECIDE_BACKENDS` raises
+`ConfigError`; passing a server backend directly to `Client(...)` raises too.
+Custom backends must declare `Capabilities(local=True)` to pass this check.
 
 ## Which number the gate reads
 

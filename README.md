@@ -36,7 +36,7 @@ the local one could not answer. Every response records the route it took.
 |---|---|
 | **One API, seven backends** | Local and hosted behind the same `Choice`, `Score` and `Noul` types. |
 | **Confidence gate** | Per call, per question, or per question type. Score answers are never gated, and [Gating](https://github.com/gopaljigaur/decide/blob/main/docs/gating.md) says why. |
-| **Local only on request** | `DECIDE_LOCAL_ONLY=1` refuses every backend that would send the state to a server, whatever keys are set. [Gating](https://github.com/gopaljigaur/decide/blob/main/docs/gating.md). |
+| **Local by default** | API keys never select a backend. Choose hosted fallback explicitly with `decide init` or Python configuration. [Gating](https://github.com/gopaljigaur/decide/blob/main/docs/gating.md). |
 | **Threshold from data** | Record decisions, attach outcomes, `decide fit` prints what each threshold would have accepted and how often it was right. |
 | **Readable routes** | `r.meta.route` is `['crossencoder:low_confidence:team=0.44<0.60', 'laya:ok']`, not a boolean. |
 | **Drop-in for typesafe-sdk** | Swap one import and keep your questions, calls and response objects. [Limits](https://github.com/gopaljigaur/decide/blob/main/docs/typesafe-sdk.md). |
@@ -101,9 +101,13 @@ This is the real output of that command, run with `laya_mlx` installed and
 none of `DECIDE_LOCAL_MODEL`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`,
 `OPENAI_API_KEY`, `DECIDE_LLM_BASE_URL` or `DECIDE_BACKENDS` set.
 
-The Python client works the same way. `Client.from_env()` builds a backend
-chain from whatever is installed and configured in the process environment;
-with a local backend installed, it needs no variables either. Pass an
+Run `decide init` to interactively save an explicit backend chain and confidence
+threshold in `decide.json`. Both the CLI and Python client read that file from
+the current directory. Setup never saves credentials or loads models.
+
+The Python client works the same way. `Client.from_env()` reads the saved
+configuration, or discovers an installed local backend when there is no file.
+API keys alone never select a hosted backend. Pass an
 explicit `env=` mapping instead (e.g. in tests) to configure from something
 other than `os.environ`:
 
@@ -142,18 +146,30 @@ This was run against the `laya_mlx` backend with no environment variables
 set at all, using its own default checkpoint; every value above is the real
 output of that run, not illustrative.
 
-`from_env` picks the chain in this order, using whatever is installed and/or
-configured: `laya_mlx` or `laya`, whichever is importable, with its own
-default model unless `DECIDE_LOCAL_MODEL` overrides it; `typesafe` (if
-`TYPESAFE_API_KEY` is set); `openrouter` (if `OPENROUTER_API_KEY` is set);
-`openai_decisions` (if `OPENAI_API_KEY` is set and `DECIDE_OPENAI_DECISIONS` is not `0`);
-`llm` (if `DECIDE_LLM_BASE_URL` or `OPENAI_API_KEY` is set). A local backend,
-when installed, is tried first, with the hosted backends as fallback. Set
-`DECIDE_BACKENDS="laya,typesafe"` to override the order explicitly, or
-`DECIDE_LOCAL_ONLY=1` to drop every hosted backend whatever keys are in the
-environment, which also makes `Client([...])` refuse one. If
-nothing is importable or configured, `from_env` raises `ConfigError` telling
-you to install a local backend or set a hosted one's API key.
+Python accepts the same configuration directly or by file:
+
+```python
+from decide import Client, Config
+
+client = Client(config="decide.json")
+# Or configure in code:
+client = Client(
+    config=Config(
+        backends=["laya_mlx", "typesafe"],
+        min_confidence=0.85,
+    )
+)
+```
+
+That chain explicitly allows hosted fallback to TypeSafe; provide its credential
+through `TYPESAFE_API_KEY`. Without a config, only `laya_mlx` (preferred) or
+`laya` is discovered. `DECIDE_BACKENDS` remains an explicit override for
+`from_env` and the CLI. `DECIDE_LOCAL_ONLY=1` refuses server backends even when
+explicitly selected. With no configured backend or local installation, the
+client raises `ConfigError` with setup instructions.
+
+See [Configuration](https://github.com/gopaljigaur/decide/blob/main/docs/configuration.md)
+for the file format and precedence rules.
 
 `AsyncClient` has the same surface, `await`ed: `await client.decide(...)`,
 `await client.decide_batch(...)`, `AsyncClient.from_env(...)`.

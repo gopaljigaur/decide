@@ -1,6 +1,7 @@
 from decide.calibration import Calibration, fit_conformal_quantile, fit_temperature
 from decide.client import AsyncClient, Client
 from decide.compat import AsyncTypeSafeClient, TypeSafeClient
+from decide.config import Config
 from decide.errors import (
     AllBackendsFailed,
     AuthError,
@@ -42,6 +43,7 @@ __all__ = [
     "Choice",
     "ChoiceAnswer",
     "Client",
+    "Config",
     "ConfigError",
     "Content",
     "DecideError",

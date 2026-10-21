@@ -344,9 +344,7 @@ def test_from_env_nothing_configured_error_has_actionable_next_steps(monkeypatch
         'Install a local model backend: uv tool install "pydecide[mlx]"  (Apple Silicon) '
         'or "pydecide[laya]"' in message
     )
-    assert (
-        "or set TYPESAFE_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY for a hosted one." in message
-    )
+    assert "run decide init or select DECIDE_BACKENDS explicitly" in message
 
 
 def test_from_env_orders_backends(monkeypatch):
@@ -361,7 +359,12 @@ def test_from_env_orders_backends(monkeypatch):
     monkeypatch.setattr(mod, "load_backend", _load)
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
     c = Client.from_env(
-        env={"TYPESAFE_API_KEY": "k", "OPENROUTER_API_KEY": "o", "DECIDE_MIN_CONFIDENCE": "0.8"}
+        env={
+            "DECIDE_BACKENDS": "typesafe,openrouter",
+            "TYPESAFE_API_KEY": "k",
+            "OPENROUTER_API_KEY": "o",
+            "DECIDE_MIN_CONFIDENCE": "0.8",
+        }
     )
     assert [n for n, _ in made] == ["typesafe", "openrouter"]
     assert c.policy.min_confidence == 0.8
@@ -403,9 +406,9 @@ def test_from_env_blank_decide_backends_falls_back_to_auto_detect(monkeypatch):
 
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
-    monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
+    monkeypatch.setattr(mod, "available", lambda: {"laya": True, "laya_mlx": False})
     c = Client.from_env(env={"DECIDE_BACKENDS": "   ", "TYPESAFE_API_KEY": "k"})
-    assert [b.name for b in c.backends] == ["typesafe"]
+    assert [b.name for b in c.backends] == ["laya"]
 
 
 def test_from_env_explicit_backend_missing_env_raises(monkeypatch):
@@ -417,7 +420,7 @@ def test_from_env_explicit_backend_missing_env_raises(monkeypatch):
 
 
 def test_from_env_crossencoder_cannot_be_configured():
-    with pytest.raises(ConfigError, match="cannot be configured from the environment"):
+    with pytest.raises(ConfigError, match="cannot be configured.*from the environment"):
         Client.from_env(env={"DECIDE_BACKENDS": "crossencoder"})
 
 
@@ -435,7 +438,7 @@ def test_from_env_typesafe_kwargs_without_base_url(monkeypatch):
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
-    Client.from_env(env={"TYPESAFE_API_KEY": "k"})
+    Client.from_env(env={"DECIDE_BACKENDS": "typesafe", "TYPESAFE_API_KEY": "k"})
     assert captured["typesafe"] == {"api_key": "k"}
 
 
@@ -445,7 +448,13 @@ def test_from_env_typesafe_kwargs_with_base_url(monkeypatch):
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
-    Client.from_env(env={"TYPESAFE_API_KEY": "k", "TYPESAFE_BASE_URL": "http://x"})
+    Client.from_env(
+        env={
+            "DECIDE_BACKENDS": "typesafe",
+            "TYPESAFE_API_KEY": "k",
+            "TYPESAFE_BASE_URL": "http://x",
+        }
+    )
     assert captured["typesafe"] == {"api_key": "k", "base_url": "http://x"}
 
 
@@ -455,7 +464,7 @@ def test_from_env_openrouter_kwargs(monkeypatch):
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
-    Client.from_env(env={"OPENROUTER_API_KEY": "o"})
+    Client.from_env(env={"DECIDE_BACKENDS": "openrouter", "OPENROUTER_API_KEY": "o"})
     assert captured["openrouter"] == {"api_key": "o"}
 
 
@@ -465,7 +474,7 @@ def test_from_env_llm_kwargs_omits_none_and_defaults_model(monkeypatch):
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
-    Client.from_env(env={"DECIDE_LLM_BASE_URL": "http://y"})
+    Client.from_env(env={"DECIDE_BACKENDS": "llm", "DECIDE_LLM_BASE_URL": "http://y"})
     assert captured["llm"] == {"base_url": "http://y", "model": "gpt-4o-mini"}
 
 
@@ -475,7 +484,9 @@ def test_from_env_llm_kwargs_with_api_key_and_model(monkeypatch):
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
-    Client.from_env(env={"OPENAI_API_KEY": "z", "DECIDE_LLM_MODEL": "gpt-4o"})
+    Client.from_env(
+        env={"DECIDE_BACKENDS": "llm", "OPENAI_API_KEY": "z", "DECIDE_LLM_MODEL": "gpt-4o"}
+    )
     assert captured["llm"] == {"api_key": "z", "model": "gpt-4o"}
 
 
@@ -486,23 +497,34 @@ def test_from_env_openai_decisions_sits_between_openrouter_and_llm(monkeypatch):
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
     c = Client.from_env(
-        env={"TYPESAFE_API_KEY": "t", "OPENROUTER_API_KEY": "o", "OPENAI_API_KEY": "z"}
+        env={
+            "DECIDE_BACKENDS": "typesafe,openrouter,openai_decisions,llm",
+            "TYPESAFE_API_KEY": "t",
+            "OPENROUTER_API_KEY": "o",
+            "OPENAI_API_KEY": "z",
+        }
     )
     assert [b.name for b in c.backends] == ["typesafe", "openrouter", "openai_decisions", "llm"]
     assert captured["openai_decisions"] == {"api_key": "z"}
     assert captured["llm"] == {"api_key": "z", "model": "gpt-4o-mini"}
 
 
-def test_from_env_openai_decisions_model_and_opt_out(monkeypatch):
+def test_from_env_openai_decisions_model_and_explicit_selection(monkeypatch):
     import decide.client as mod
 
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
-    Client.from_env(env={"OPENAI_API_KEY": "z", "DECIDE_OPENAI_DECISIONS_MODEL": "gpt-6-sol"})
+    Client.from_env(
+        env={
+            "DECIDE_BACKENDS": "openai_decisions",
+            "OPENAI_API_KEY": "z",
+            "DECIDE_OPENAI_DECISIONS_MODEL": "gpt-6-sol",
+        }
+    )
     assert captured["openai_decisions"] == {"api_key": "z", "model": "gpt-6-sol"}
     captured.clear()
-    c = Client.from_env(env={"OPENAI_API_KEY": "z", "DECIDE_OPENAI_DECISIONS": "0"})
+    c = Client.from_env(env={"DECIDE_BACKENDS": "llm", "OPENAI_API_KEY": "z"})
     assert [b.name for b in c.backends] == ["llm"]
     assert "openai_decisions" not in captured
 
@@ -521,13 +543,7 @@ def test_local_only_drops_hosted_backends_the_environment_would_have_added(monke
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": True})
 
     env = {"OPENAI_API_KEY": "sk-x", "TYPESAFE_API_KEY": "k", "OPENROUTER_API_KEY": "r"}
-    assert [b.name for b in Client.from_env(env=env).backends] == [
-        "laya_mlx",
-        "typesafe",
-        "openrouter",
-        "openai_decisions",
-        "llm",
-    ]
+    assert [b.name for b in Client.from_env(env=env).backends] == ["laya_mlx"]
     only = Client.from_env(env={**env, "DECIDE_LOCAL_ONLY": "1"})
     assert [b.name for b in only.backends] == ["laya_mlx"]
 
@@ -692,7 +708,7 @@ def test_from_env_local_backend_and_hosted_backend_order(monkeypatch):
     captured = {}
     monkeypatch.setattr(mod, "load_backend", _capturing_loader(captured))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": True})
-    c = Client.from_env(env={"TYPESAFE_API_KEY": "k"})
+    c = Client.from_env(env={"DECIDE_BACKENDS": "laya_mlx,typesafe", "TYPESAFE_API_KEY": "k"})
     assert [b.name for b in c.backends] == ["laya_mlx", "typesafe"]
     assert captured == {"laya_mlx": {}, "typesafe": {"api_key": "k"}}
 
@@ -725,6 +741,7 @@ def test_from_env_with_no_argument_reads_process_environment(monkeypatch):
         Client.from_env()
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+    monkeypatch.setenv("DECIDE_BACKENDS", "typesafe")
     c = Client.from_env()
     assert [b.name for b in c.backends] == ["typesafe"]
 
@@ -738,6 +755,7 @@ async def test_async_client_from_env_with_no_argument_reads_process_environment(
     monkeypatch.setattr(mod, "load_backend", lambda name, **kw: FakeBackend(name))
     monkeypatch.setattr(mod, "available", lambda: {"laya": False, "laya_mlx": False})
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setenv("DECIDE_BACKENDS", "openrouter")
 
     c = AsyncClient.from_env()
     assert [b.name for b in c.backends] == ["openrouter"]
