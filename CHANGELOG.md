@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.19 (2026-10-21)
 
 - Add `decide init` for interactive setup, saving an explicit chain, backend
   options, and confidence threshold to `decide.json`. Setup does not save keys.
