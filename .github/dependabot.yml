@@ -6,9 +6,16 @@ updates:
       interval: monthly
     commit-message:
       prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
+  # One PR for all lockfile bumps; separate PRs each rewrite uv.lock and conflict.
   - package-ecosystem: uv
     directory: /
     schedule:
       interval: monthly
     commit-message:
       prefix: "deps"
+    groups:
+      uv:
+        patterns: ["*"]
