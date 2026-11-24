@@ -14,8 +14,8 @@ from tokenizers.models import WordLevel  # noqa: E402
 from tokenizers.pre_tokenizers import Whitespace  # noqa: E402
 from tokenizers.processors import TemplateProcessing  # noqa: E402
 
-from decide.backends.onnx_crossencoder import OnnxCrossEncoderBackend  # noqa: E402
 from decide.backends import load  # noqa: E402
+from decide.backends.onnx_crossencoder import OnnxCrossEncoderBackend  # noqa: E402
 from decide.errors import ConfigError  # noqa: E402
 from decide.types import Noul, Request  # noqa: E402
 
