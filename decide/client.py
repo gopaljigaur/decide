@@ -535,7 +535,7 @@ def _kwargs_for(
         }
     elif name in ("laya", "laya_mlx"):
         kwargs = _auto_local_kwargs(env)
-    elif name == "crossencoder":
+    elif name in ("crossencoder", "onnx_crossencoder"):
         kwargs = {}
     else:
         raise ConfigError(f"unknown backend {name!r}")
@@ -546,6 +546,11 @@ def _kwargs_for(
     if name == "crossencoder" and not kwargs.get("model"):
         raise ConfigError(
             "crossencoder requires a model in Config.options; it cannot be configured "
+            "from the environment alone"
+        )
+    if name == "onnx_crossencoder" and not kwargs.get("model_dir"):
+        raise ConfigError(
+            "onnx_crossencoder requires a model_dir in Config.options; it cannot be configured "
             "from the environment alone"
         )
     return kwargs
@@ -575,7 +580,7 @@ def _refuse_hosted(backends: Sequence[Backend]) -> None:
 _LOCAL_ONLY_ENV = "DECIDE_LOCAL_ONLY"
 
 # Backends that answer in process. Anything else sends the state to a server.
-_LOCAL_BACKENDS = frozenset({"laya", "laya_mlx", "crossencoder"})
+_LOCAL_BACKENDS = frozenset({"laya", "laya_mlx", "crossencoder", "onnx_crossencoder"})
 
 
 def _local_only(env: Mapping[str, str] | None) -> bool:

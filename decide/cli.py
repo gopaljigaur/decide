@@ -30,7 +30,7 @@ from decide.types import (
 from decide.wire import to_wire_answers
 
 # Env vars that make a backend "configured" for `decide backends`. A backend
-# absent from this mapping (currently only `crossencoder`) is not
+# absent from this mapping (`crossencoder` and `onnx_crossencoder`) is not
 # environment-configurable and always reports "n/a".
 _ENV_VARS: dict[str, tuple[str, ...]] = {
     "typesafe": ("TYPESAFE_API_KEY",),
@@ -454,7 +454,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
             return 0
         installed = available()
         default = "laya_mlx" if installed.get("laya_mlx") else "laya"
-        local = {"laya", "laya_mlx", "crossencoder"}
+        local = {"laya", "laya_mlx", "crossencoder", "onnx_crossencoder"}
         print("Choose your backend chain, in order. The default runs inference locally.")
         for name in REGISTRY:
             location = "local" if name in local else "server; sends your state"
@@ -473,12 +473,14 @@ def _cmd_init(args: argparse.Namespace) -> int:
                 print(exc)
         options: dict[str, dict[str, Any]] = {}
         for name in chosen.backends:
+            key = "model_dir" if name == "onnx_crossencoder" else "model"
+            required = name in {"crossencoder", "onnx_crossencoder"}
             while True:
-                model = _prompt(f"{name} model (blank uses backend default)")
-                if name != "crossencoder" or model:
+                model = _prompt(f"{name} {key} (blank uses backend default)")
+                if not required or model:
                     break
-                print("crossencoder requires a model name or path.")
-            values: dict[str, Any] = {"model": model} if model else {}
+                print(f"{name} requires a {key}.")
+            values: dict[str, Any] = {key: model} if model else {}
             if name in {"typesafe", "llm"}:
                 url = _prompt(f"{name} base URL (blank uses backend default)")
                 if url:

@@ -15,6 +15,7 @@ from tokenizers.pre_tokenizers import Whitespace  # noqa: E402
 from tokenizers.processors import TemplateProcessing  # noqa: E402
 
 from decide.backends.onnx_crossencoder import OnnxCrossEncoderBackend  # noqa: E402
+from decide.backends import load  # noqa: E402
 from decide.errors import ConfigError  # noqa: E402
 from decide.types import Noul, Request  # noqa: E402
 
@@ -107,6 +108,26 @@ def test_batch_size_chunks_do_not_change_scores(bundle):
     assert [r.nouls["n"].noul for r in small] == [r.nouls["n"].noul for r in large]
 
 
+def test_load_by_registry_name(bundle):
+    backend = load("onnx_crossencoder", model_dir=str(bundle))
+    assert isinstance(backend, OnnxCrossEncoderBackend)
+
+
+def test_load_without_extra_names_the_extra(monkeypatch):
+    import builtins
+
+    real = builtins.__import__
+
+    def deny(name, *a, **kw):
+        if name.split(".")[0] in {"onnxruntime", "tokenizers"}:
+            raise ImportError(name)
+        return real(name, *a, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", deny)
+    with pytest.raises(ConfigError, match=r"pydecide\[onnx\]"):
+        load("onnx_crossencoder", model_dir="unused")
+
+
 def test_missing_bundle_file_is_config_error(bundle):
     os.remove(bundle / "config.json")
     with pytest.raises(ConfigError, match="config.json"):
@@ -140,6 +161,7 @@ def test_live_minilm_bundle_matches_sentence_transformers(tmp_path):
         str(tmp_path / "model.onnx"),
         input_names=names,
         output_names=["logits"],
+        dynamo=False,
         dynamic_axes={**{n: {0: "batch", 1: "seq"} for n in names}, "logits": {0: "batch"}},
     )
     tokenizer.backend_tokenizer.save(str(tmp_path / "tokenizer.json"))

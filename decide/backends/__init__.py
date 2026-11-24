@@ -13,6 +13,7 @@ REGISTRY: dict[str, str] = {
     "laya": "decide.backends.laya:LayaBackend",
     "laya_mlx": "decide.backends.laya_mlx:LayaMLXBackend",
     "crossencoder": "decide.backends.crossencoder:CrossEncoderBackend",
+    "onnx_crossencoder": "decide.backends.onnx_crossencoder:OnnxCrossEncoderBackend",
     "llm": "decide.backends.llm:LLMBackend",
 }
 
@@ -24,6 +25,7 @@ _EXTRAS: dict[str, str | None] = {
     "laya": "pydecide[laya]",
     "laya_mlx": "pydecide[mlx]",
     "crossencoder": "pydecide[st]",
+    "onnx_crossencoder": "pydecide[onnx]",
     "llm": None,
 }
 
@@ -35,6 +37,7 @@ _REQUIRES: dict[str, str] = {
     "laya": "laya",
     "laya_mlx": "laya_mlx",
     "crossencoder": "sentence_transformers",
+    "onnx_crossencoder": "onnxruntime",
     "llm": "httpx",
 }
 
