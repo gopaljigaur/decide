@@ -69,7 +69,8 @@ otherwise tries to glob them. This pulls in PyTorch and MLX, about 2 GB.
 | `laya` | `laya` backend (PyTorch) |
 | `mlx` | `laya_mlx` backend (Apple Silicon; needs Python 3.11+) |
 | `st` | `crossencoder` backend (sentence-transformers) |
-| `all` | `laya` + `mlx` + `st` |
+| `onnx` | `onnx_crossencoder` backend (onnxruntime, no PyTorch) |
+| `all` | `laya` + `mlx` + `st` + `onnx` |
 
 The `mlx` extra depends on `laya-mlx`, which requires Python 3.11 or newer;
 on 3.10 the extra installs nothing and the `laya_mlx` backend is
