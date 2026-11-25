@@ -19,6 +19,7 @@ def test_available_returns_all_registered_backends():
         "laya",
         "laya_mlx",
         "crossencoder",
+        "onnx_crossencoder",
         "llm",
     }
     assert all(isinstance(v, bool) for v in result.values())

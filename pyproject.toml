@@ -32,7 +32,8 @@ server = ["fastapi>=0.110", "uvicorn>=0.29"]
 laya = ["laya>=0.3"]
 mlx = ["laya-mlx>=0.1 ; python_version >= '3.11'"]
 st = ["sentence-transformers>=3.0", "torch"]
-all = ["pydecide[laya,mlx,st]"]
+onnx = ["onnxruntime>=1.20", "tokenizers>=0.20", "numpy"]
+all = ["pydecide[laya,mlx,st,onnx]"]
 
 [project.scripts]
 decide = "decide.cli:main"
@@ -54,7 +55,7 @@ packages = ["decide"]
 exclude = [".superpowers/"]
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.11", "fastapi>=0.110", "httpx>=0.27", "typesafe-sdk", "jsonschema>=4"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.11", "fastapi>=0.110", "httpx>=0.27", "typesafe-sdk", "jsonschema>=4", "onnx>=1.16"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -65,6 +66,8 @@ files = ["decide"]
 module = [
     "laya.*",
     "laya_mlx.*",
+    "onnxruntime.*",
+    "tokenizers.*",
     "sentence_transformers.*",
     "torch.*",
     "typesafe_sdk.*",

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the `onnx_crossencoder` backend and `onnx` extra: serve a fine-tuned cross-encoder
+  from an ONNX bundle on CPU with onnxruntime and tokenizers, no PyTorch. Templates and
+  aggregation match `crossencoder`.
+
 ## 0.2.19 (2026-10-21)
 
 - Add `decide init` for interactive setup, saving an explicit chain, backend

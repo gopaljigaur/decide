@@ -16,7 +16,7 @@ def loader(monkeypatch):
     def load(name, **kwargs):
         made[name] = kwargs
         backend = FakeBackend(name, confidence=0.6)
-        if name in {"laya", "laya_mlx", "crossencoder"}:
+        if name in {"laya", "laya_mlx", "crossencoder", "onnx_crossencoder"}:
             backend.capabilities = lambda: Capabilities(local=True)
         return backend
 
